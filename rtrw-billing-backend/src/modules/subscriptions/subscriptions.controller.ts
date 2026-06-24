@@ -1,0 +1,37 @@
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '@modules/auth/jwt-auth.guard';
+import { RolesGuard } from '@common/guards/roles.guard';
+import { Roles } from '@common/decorators/roles.decorator';
+import { SubscriptionsService } from './subscriptions.service';
+
+@ApiTags('subscriptions')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Controller('subscriptions')
+export class SubscriptionsController {
+  constructor(private readonly service: SubscriptionsService) {}
+
+  @Get()
+  findAll() {
+    return this.service.findAll();
+  }
+
+  @Patch(':id/package')
+  @Roles('admin', 'operator')
+  changePackage(@Param('id') id: string, @Body('packageId') packageId: string) {
+    return this.service.changePackage(id, packageId);
+  }
+
+  @Post(':id/suspend')
+  @Roles('admin', 'operator')
+  suspend(@Param('id') id: string) {
+    return this.service.setAccess(id, 'suspend');
+  }
+
+  @Post(':id/activate')
+  @Roles('admin', 'operator')
+  activate(@Param('id') id: string) {
+    return this.service.setAccess(id, 'activate');
+  }
+}

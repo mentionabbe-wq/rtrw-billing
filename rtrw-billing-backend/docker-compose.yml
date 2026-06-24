@@ -1,0 +1,50 @@
+# Satu aplikasi: Postgres + Redis + (NestJS API + React UI dalam satu image).
+# Jalankan dari folder rtrw-billing-backend:  docker compose up -d --build
+# Butuh Docker Compose v2 (BuildKit named contexts).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-rtrw}
+      POSTGRES_PASSWORD: ${DB_PASS:-changeme}
+      POSTGRES_DB: ${DB_NAME:-rtrw_billing}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-rtrw}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.fullstack
+      additional_contexts:
+        frontend: ../rtrw-billing-frontend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      SEED_ON_START: "true" # set "false" setelah seed pertama
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "3000:3000" # UI + API: http://localhost:3000
+
+volumes:
+  pgdata:

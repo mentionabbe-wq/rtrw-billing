@@ -1,0 +1,34 @@
+# Single-image build: React frontend + NestJS backend served together on one port.
+# Requires BuildKit named contexts. The frontend source is passed as the
+# additional build context "frontend" (see docker-compose.yml).
+# syntax=docker/dockerfile:1.7
+
+# ---- 1. build frontend ----
+FROM node:20-alpine AS fe
+WORKDIR /fe
+COPY --from=frontend package*.json ./
+RUN npm ci
+COPY --from=frontend . .
+# Override vite outDir so the bundle lands in /fe/dist (inside this context).
+RUN npm run build -- --outDir dist
+
+# ---- 2. build backend ----
+FROM node:20-alpine AS be
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+# ---- 3. runtime ----
+FROM node:20-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY --from=be /app/dist ./dist
+COPY --from=fe /fe/dist ./client
+COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
+EXPOSE 3000
+ENTRYPOINT ["./docker-entrypoint.sh"]

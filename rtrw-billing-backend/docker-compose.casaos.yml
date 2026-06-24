@@ -1,0 +1,44 @@
+# CasaOS / generic Docker deployment (no BuildKit named contexts required).
+# Pre-build the UI into ./client first, then: docker compose -f docker-compose.casaos.yml up -d --build
+# Postgres & Redis are NOT published to the host (internal network only).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-rtrw}
+      POSTGRES_PASSWORD: ${DB_PASS:-changeme}
+      POSTGRES_DB: ${DB_NAME:-rtrw_billing}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-rtrw}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.casaos
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      SEED_ON_START: "true" # ganti "false" setelah seed pertama
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "3000:3000" # UI + API → http://IP-CASAOS:3000
+
+volumes:
+  pgdata:

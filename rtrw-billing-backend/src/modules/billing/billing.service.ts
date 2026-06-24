@@ -1,0 +1,163 @@
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { Between, Repository } from 'typeorm';
+import { Invoice, Payment, Subscription } from '@database/entities';
+import { CryptoService } from '@common/crypto/crypto.service';
+import { WhatsappService } from '@modules/whatsapp/whatsapp.module';
+import {
+  MIKROTIK_QUEUE,
+  MikrotikJobData,
+  DEFAULT_JOB_OPTS,
+} from '@modules/scheduler/queue.constants';
+
+const rupiah = (v: string) =>
+  new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(v));
+
+@Injectable()
+export class BillingService {
+  private readonly logger = new Logger(BillingService.name);
+
+  constructor(
+    @InjectRepository(Invoice) private readonly invoices: Repository<Invoice>,
+    @InjectRepository(Payment) private readonly payments: Repository<Payment>,
+    @InjectRepository(Subscription) private readonly subs: Repository<Subscription>,
+    @InjectQueue(MIKROTIK_QUEUE) private readonly mikrotikQueue: Queue<MikrotikJobData>,
+    private readonly crypto: CryptoService,
+    private readonly wa: WhatsappService,
+  ) {}
+
+  /**
+   * Bulk-generate invoices for the given month (default: current month).
+   * Idempotent: skips a subscription that already has an invoice for the period.
+   * Returns how many invoices were created. Sends a WhatsApp notice per invoice.
+   */
+  async generateMonthly(month?: string): Promise<{ created: number; skipped: number }> {
+    const base = month ? new Date(month + '-01T00:00:00Z') : new Date();
+    const periodStart = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), 1));
+    const periodEnd = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0));
+    const ps = periodStart.toISOString().slice(0, 10);
+    const pe = periodEnd.toISOString().slice(0, 10);
+
+    const subs = await this.subs.find({
+      where: { status: 'active' },
+      relations: { package: true, customer: true },
+    });
+
+    let created = 0;
+    let skipped = 0;
+    for (const sub of subs) {
+      const exists = await this.invoices.findOne({
+        where: { subscription: { id: sub.id }, periodStart: Between(ps, ps) },
+        relations: { subscription: true },
+      });
+      if (exists) { skipped++; continue; }
+
+      const invoice = await this.invoices.save(this.invoices.create({
+        invoiceNo: 'INV' + Date.now().toString(36).toUpperCase() + sub.id,
+        subscription: sub,
+        amount: sub.package.price,
+        periodStart: ps,
+        periodEnd: pe,
+        dueDate: sub.dueDate,
+        status: 'unpaid',
+      }));
+      created++;
+
+      const phone = this.crypto.decrypt(sub.customer.phoneEnc);
+      if (phone) {
+        await this.wa.send(phone, 'invoice_baru', {
+          name: sub.customer.fullName,
+          period: ps.slice(0, 7),
+          amount: rupiah(invoice.amount),
+          due: invoice.dueDate,
+        });
+      }
+    }
+    this.logger.log(`generateMonthly ${ps}: created=${created} skipped=${skipped}`);
+    return { created, skipped };
+  }
+
+  /** List recent invoices for the dashboard. */
+  listInvoices() {
+    return this.invoices.find({ order: { id: 'DESC' }, take: 200 });
+  }
+
+  /** Generate a monthly invoice for an active subscription. */
+  async generateInvoice(subscriptionId: string): Promise<Invoice> {
+    const sub = await this.subs.findOne({
+      where: { id: subscriptionId },
+      relations: { package: true },
+    });
+    if (!sub) throw new NotFoundException('Subscription not found');
+
+    const invoice = this.invoices.create({
+      invoiceNo: 'INV' + Date.now().toString(36).toUpperCase(),
+      subscription: sub,
+      amount: sub.package.price,
+      dueDate: sub.dueDate,
+      status: 'unpaid',
+    });
+    return this.invoices.save(invoice);
+  }
+
+  /**
+   * Mark invoice paid + extend due date + enqueue Mikrotik reactivation.
+   * Idempotent: if already paid, it just no-ops.
+   */
+  async settlePayment(params: {
+    invoiceNo: string;
+    gateway: string;
+    gatewayRef: string;
+    amount: string;
+    method: string;
+    rawPayload: Record<string, any>;
+  }): Promise<void> {
+    const invoice = await this.invoices.findOne({
+      where: { invoiceNo: params.invoiceNo },
+      relations: { subscription: { package: true, customer: true } },
+    });
+    if (!invoice) throw new NotFoundException('Invoice not found');
+    if (invoice.status === 'paid') return; // idempotent
+
+    await this.payments.save(
+      this.payments.create({
+        invoice,
+        gateway: params.gateway,
+        gatewayRef: params.gatewayRef,
+        amount: params.amount,
+        method: params.method,
+        status: 'settled',
+        paidAt: new Date(),
+        rawPayload: params.rawPayload,
+      }),
+    );
+
+    invoice.status = 'paid';
+    await this.invoices.save(invoice);
+
+    const sub = invoice.subscription;
+    const cycle = sub.package.billingCycle || 30;
+    const newDue = new Date(sub.dueDate);
+    newDue.setDate(newDue.getDate() + cycle);
+    sub.dueDate = newDue.toISOString().slice(0, 10);
+    if (sub.status !== 'active') {
+      sub.status = 'active';
+      await this.mikrotikQueue.add(
+        'activate',
+        { subscriptionId: sub.id },
+        DEFAULT_JOB_OPTS,
+      );
+    }
+    await this.subs.save(sub);
+
+    const phone = invoice.subscription.customer
+      ? this.crypto.decrypt(invoice.subscription.customer.phoneEnc)
+      : null;
+    if (phone) {
+      await this.wa.send(phone, 'aktif_kembali', { name: invoice.subscription.customer.fullName });
+    }
+    this.logger.log(`Invoice ${invoice.invoiceNo} settled, sub ${sub.id} reactivated`);
+  }
+}

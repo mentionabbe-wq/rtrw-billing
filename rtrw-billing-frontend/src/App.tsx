@@ -1,0 +1,48 @@
+import { ReactNode } from 'react';
+import { Navigate, Route, Routes } from 'react-router-dom';
+import { Layout } from '@/components/Layout';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { Capability, useCan } from '@/lib/rbac';
+import Login from '@/pages/Login';
+import Dashboard from '@/pages/Dashboard';
+import Customers from '@/pages/Customers';
+import Subscriptions from '@/pages/Subscriptions';
+import Packages from '@/pages/Packages';
+import Invoices from '@/pages/Invoices';
+import Monitoring from '@/pages/Monitoring';
+import Settings from '@/pages/Settings';
+import Audit from '@/pages/Audit';
+import Users from '@/pages/Users';
+import Security from '@/pages/Security';
+
+function RequireCap({ cap, children }: { cap: Capability; children: ReactNode }) {
+  const allowed = useCan(cap);
+  return allowed ? <>{children}</> : <Navigate to="/" replace />;
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route
+        element={
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/customers" element={<Customers />} />
+        <Route path="/subscriptions" element={<Subscriptions />} />
+        <Route path="/packages" element={<Packages />} />
+        <Route path="/invoices" element={<Invoices />} />
+        <Route path="/monitoring" element={<Monitoring />} />
+        <Route path="/settings" element={<RequireCap cap="settings.manage"><Settings /></RequireCap>} />
+        <Route path="/audit" element={<RequireCap cap="audit.view"><Audit /></RequireCap>} />
+        <Route path="/users" element={<RequireCap cap="users.manage"><Users /></RequireCap>} />
+        <Route path="/security" element={<Security />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}

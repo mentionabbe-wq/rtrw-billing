@@ -1,0 +1,78 @@
+name: rtrw-billing
+services:
+  app:
+    # Image lokal yang Anda build sekali via SSH (lihat DEPLOY-CASAOS.md, bagian App Store).
+    # pull_policy: missing => CasaOS pakai image lokal, tidak menarik dari registry.
+    image: rtrw-billing:latest
+    pull_policy: missing
+    container_name: rtrw-billing-app
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      DB_HOST: rtrw-billing-postgres
+      DB_PORT: "5432"
+      DB_USER: rtrw
+      DB_PASS: ubah-password-ini
+      DB_NAME: rtrw_billing
+      REDIS_HOST: rtrw-billing-redis
+      REDIS_PORT: "6379"
+      # WAJIB GANTI sebelum produksi (boleh dibiarkan untuk coba-coba):
+      JWT_SECRET: ganti-string-acak-panjang-1
+      JWT_REFRESH_SECRET: ganti-string-acak-panjang-2
+      JWT_EXPIRES: 15m
+      JWT_REFRESH_EXPIRES: 7d
+      # 64 karakter hex (32 byte). GANTI dengan hasil: openssl rand -hex 32
+      DATA_ENC_KEY: 0f1e2d3c4b5a69788796a5b4c3d2e1f00112233445566778899aabbccddeeff00
+      SEED_ON_START: "true"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - redis
+    x-casaos:
+      ports:
+        - container: "3000"
+          description:
+            en_us: Web UI + REST API
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: rtrw-billing-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rtrw
+      POSTGRES_PASSWORD: ubah-password-ini
+      POSTGRES_DB: rtrw_billing
+    volumes:
+      - rtrw-pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: rtrw-billing-redis
+    restart: unless-stopped
+
+volumes:
+  rtrw-pgdata:
+
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+  main: app
+  author: self-hosted
+  developer: self-hosted
+  category: Network
+  title:
+    en_us: RT/RW Net Billing
+  tagline:
+    en_us: Billing + Mikrotik + SNMP OLT
+  description:
+    en_us: >-
+      Sistem billing RT/RW Net: manajemen pelanggan & paket, auto-suspend via
+      Mikrotik API, monitoring optical power ONU via SNMP (ZTE/Huawei),
+      tagihan otomatis + WhatsApp, dashboard real-time, 2FA & audit log.
+  icon: https://cdn.jsdelivr.net/gh/selfhst/icons/png/mikrotik.png
+  scheme: http
+  webui_port: 3000
+  index: /
+  port_map: "3000"
