@@ -30,7 +30,7 @@ kedua folder project (`rtrw-billing-backend` & `rtrw-billing-frontend`) tersalin
      -v "$(pwd)/../rtrw-billing-frontend:/fe" \
      -v "$(pwd)/client:/out" \
      -w /fe node:20-alpine \
-     sh -c "npm ci && npm run build -- --outDir /out"
+     sh -c "npm install && npm run build -- --outDir /out"
    ```
 
 4. **Build & jalankan** (migrasi + seed otomatis):
@@ -59,7 +59,7 @@ cp .env.example .env            # cukup ada filenya (env asli diisi di compose A
 mkdir -p client
 # build UI React ke ./client
 docker run --rm -v "$(pwd)/../rtrw-billing-frontend:/fe" -v "$(pwd)/client:/out" \
-  -w /fe node:20-alpine sh -c "npm ci && npm run build -- --outDir /out"
+  -w /fe node:20-alpine sh -c "npm install && npm run build -- --outDir /out"
 # build image aplikasi & beri tag
 docker build -f Dockerfile.casaos -t rtrw-billing:latest .
 ```

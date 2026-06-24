@@ -4,28 +4,28 @@
 # syntax=docker/dockerfile:1.7
 
 # ---- 1. build frontend ----
-FROM node:20-alpine AS fe
+FROM node:20-slim AS fe
 WORKDIR /fe
 COPY --from=frontend package*.json ./
-RUN npm ci
+RUN npm install
 COPY --from=frontend . .
 # Override vite outDir so the bundle lands in /fe/dist (inside this context).
 RUN npm run build -- --outDir dist
 
 # ---- 2. build backend ----
-FROM node:20-alpine AS be
+FROM node:20-slim AS be
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 COPY . .
 RUN npm run build
 
 # ---- 3. runtime ----
-FROM node:20-alpine
+FROM node:20-slim
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 COPY --from=be /app/dist ./dist
 COPY --from=fe /fe/dist ./client
 COPY docker-entrypoint.sh ./
