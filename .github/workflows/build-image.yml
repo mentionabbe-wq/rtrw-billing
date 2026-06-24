@@ -3,6 +3,11 @@ name: build-image
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '**/casaos-appstore.yml'
+      - '**/docker-compose*.yml'
+      - '**/DEPLOY-CASAOS.md'
   workflow_dispatch:
 
 jobs:
