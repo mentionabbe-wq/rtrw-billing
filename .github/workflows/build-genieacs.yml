@@ -1,15 +1,11 @@
-name: build-image
+name: build-genieacs
 
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - '**.md'
-      - '**/casaos-appstore.yml'
-      - '**/genieacs-casaos.yml'
+    paths:
       - 'genieacs/**'
-      - '**/docker-compose*.yml'
-      - '**/DEPLOY-CASAOS.md'
+      - '.github/workflows/build-genieacs.yml'
   workflow_dispatch:
 
 jobs:
@@ -20,33 +16,20 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
-
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Image metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=raw,value=latest
-            type=sha,format=short
-
       - name: Build & push
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./genieacs
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ghcr.io/mentionabbe-wq/genieacs:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max

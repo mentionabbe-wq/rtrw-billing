@@ -1,0 +1,66 @@
+name: genieacs
+services:
+  app:
+    image: ghcr.io/mentionabbe-wq/genieacs:latest
+    container_name: genieacs
+    restart: unless-stopped
+    environment:
+      GENIEACS_MONGODB_CONNECTION_URL: mongodb://genieacs-mongo:27017/genieacs
+      # GANTI dengan string acak (mis. hasil: openssl rand -hex 24)
+      GENIEACS_UI_JWT_SECRET: ganti-secret-acak-genieacs
+    depends_on:
+      - mongo
+    ports:
+      - "7547:7547"   # CWMP — arahkan TR-069 ACS URL ONU ke http://IP-CASAOS:7547
+      - "7557:7557"   # NBI  — dipakai aplikasi billing (GENIEACS_URL)
+      - "7567:7567"   # FS   — server firmware
+      - "3001:3000"   # UI GenieACS (host 3001 agar tak bentrok billing :3000)
+    networks:
+      - genieacs-net
+    x-casaos:
+      ports:
+        - container: "3000"
+          description:
+            en_us: GenieACS Web UI
+        - container: "7547"
+          description:
+            en_us: CWMP / TR-069 (ONU connect)
+        - container: "7557"
+          description:
+            en_us: NBI REST API
+
+  mongo:
+    image: mongo:4.4
+    container_name: genieacs-mongo
+    restart: unless-stopped
+    volumes:
+      - /DATA/AppData/genieacs/mongo:/data/db
+    networks:
+      - genieacs-net
+
+networks:
+  genieacs-net:
+    driver: bridge
+
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+  main: app
+  author: mentionabbe-wq
+  developer: mentionabbe-wq
+  category: Network
+  title:
+    en_us: GenieACS (TR-069)
+  tagline:
+    en_us: ACS untuk kelola ONU via TR-069
+  description:
+    en_us: >-
+      GenieACS 1.2 (CWMP + NBI + FS + UI) + MongoDB. Server TR-069/ACS untuk
+      mengelola ONU/ONT: ubah SSID/password WiFi, reboot, firmware, dsb.
+      Aplikasi RT/RW Net Billing terhubung lewat NBI (port 7557).
+  icon: https://cdn.jsdelivr.net/gh/selfhst/icons/png/mikrotik.png
+  scheme: http
+  webui_port: 3001
+  index: /
+  port_map: "3001"
