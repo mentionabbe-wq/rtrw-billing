@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pause, Play, Loader2, Save } from 'lucide-react';
+import { Loader2, Save } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCan } from '@/lib/rbac';
 
@@ -39,8 +39,9 @@ export default function Subscriptions() {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['subscriptions'] });
 
-  // Pilihan paket per-baris (belum disimpan sampai tombol Save diklik).
+  // Pilihan paket & status per-baris (belum disimpan sampai tombol Save diklik).
   const [pkgSel, setPkgSel] = useState<Record<string, string>>({});
+  const [statusSel, setStatusSel] = useState<Record<string, string>>({});
 
   const changePkg = useMutation({
     mutationFn: ({ id, packageId }: { id: string; packageId: string }) =>
@@ -54,15 +55,19 @@ export default function Subscriptions() {
   const access = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'suspend' | 'activate' }) =>
       api.post(`/subscriptions/${id}/${action}`),
-    onSuccess: invalidate,
+    onSuccess: (_res, vars) => {
+      setStatusSel((p) => { const n = { ...p }; delete n[vars.id]; return n; });
+      invalidate();
+    },
+    onError: () => alert('Gagal mengirim perintah ke Mikrotik.'),
   });
 
   return (
     <div className="space-y-5">
       <h1 className="text-xl font-semibold">Langganan</h1>
       <p className="text-sm text-slate-500">
-        Pilih paket baru lalu klik <strong>Save</strong> untuk menerapkan ke Mikrotik
-        (job <code>set_bandwidth</code> → set profil & queue). Suspend/aktifkan memicu kontrol PPPoE remote.
+        Ubah <strong>paket</strong> atau <strong>status</strong> (Aktif/Suspend) lewat dropdown, lalu klik
+        <strong> Save</strong> untuk menerapkan ke Mikrotik. Tombol Save hanya muncul saat ada perubahan.
       </p>
 
       <div className="card overflow-hidden">
@@ -116,29 +121,35 @@ export default function Subscriptions() {
                     <span className={`badge ${tone[s.status] ?? 'bg-slate-100'}`}>{s.status}</span>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex items-center justify-end gap-2">
                       {!canWrite && <span className="text-xs text-slate-400">—</span>}
                       {canWrite && (
                         <>
-                          <button
-                            className="btn-ghost text-emerald-600 disabled:opacity-40"
-                            disabled={access.isPending || s.status === 'active'}
-                            onClick={() => access.mutate({ id: s.id, action: 'activate' })}
-                            title="Aktifkan (kirim ke Mikrotik)"
+                          <select
+                            className="input py-1"
+                            value={statusSel[s.id] ?? s.status}
+                            disabled={access.isPending}
+                            onChange={(e) => setStatusSel((p) => ({ ...p, [s.id]: e.target.value }))}
                           >
-                            <Play size={16} /> Aktifkan
-                          </button>
-                          <button
-                            className="btn-ghost text-amber-600 disabled:opacity-40"
-                            disabled={access.isPending || s.status === 'suspended'}
-                            onClick={() => {
-                              if (confirm(`Suspend ${s.customerName}? Koneksi PPPoE akan diputus.`))
-                                access.mutate({ id: s.id, action: 'suspend' });
-                            }}
-                            title="Suspend (kirim ke Mikrotik)"
-                          >
-                            <Pause size={16} /> Suspend
-                          </button>
+                            <option value="active">Aktif</option>
+                            <option value="suspended">Suspend</option>
+                          </select>
+                          {(statusSel[s.id] && statusSel[s.id] !== s.status) && (
+                            <button
+                              className="btn-primary py-1"
+                              disabled={access.isPending}
+                              onClick={() => {
+                                const action = statusSel[s.id] === 'active' ? 'activate' : 'suspend';
+                                if (action === 'suspend' && !confirm(`Suspend ${s.customerName}? Koneksi PPPoE akan diputus.`)) return;
+                                access.mutate({ id: s.id, action });
+                              }}
+                              title="Simpan status & kirim ke Mikrotik"
+                            >
+                              {access.isPending && access.variables?.id === s.id
+                                ? <Loader2 size={14} className="animate-spin" />
+                                : <Save size={14} />} Save
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
