@@ -41,6 +41,7 @@ export default function Packages() {
     onSuccess: (res: any) => {
       invalidate();
       const d = res?.data ?? {};
+      if (d.error) { alert(`Sinkron gagal: ${d.error}`); return; }
       const detail = (d.routers ?? [])
         .map((r: any) => `• ${r.router}: +${r.created} baru, ${r.skipped} dilewati${r.error ? ` (${r.error})` : ''}`)
         .join('\n');

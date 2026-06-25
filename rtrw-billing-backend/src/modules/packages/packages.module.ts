@@ -43,7 +43,9 @@ export class PackagesService {
    * (remote-address) diambil dari profile, harga 0 (isi manual). Idempotent.
    */
   async syncFromMikrotik() {
+   try {
     const routers = await this.routers.find();
+    if (!routers.length) return { created: 0, skipped: 0, routers: [], error: 'Belum ada router. Tambah router di Pengaturan dulu.' };
     const existing = new Set(
       (await this.repo.find()).map((p) => p.pppoeProfile).filter(Boolean),
     );
@@ -63,26 +65,34 @@ export class PackagesService {
         continue;
       }
 
-      let rc = 0, rs = 0;
+      let rc = 0, rs = 0, saveErr: string | undefined;
       for (const prof of profiles) {
         const name: string = prof.name;
         if (!name || SKIP.has(name) || existing.has(name)) { rs++; skipped++; continue; }
         existing.add(name);
-        await this.repo.save(this.repo.create({
-          name,
-          price: '0',
-          rateLimit: prof.rateLimit || '0/0',
-          pppoeProfile: name,
-          ipPool: prof.remoteAddress || null,
-          billingCycle: 30,
-          isActive: true,
-        }));
-        rc++; created++;
+        try {
+          await this.repo.save(this.repo.create({
+            name,
+            price: '0',
+            rateLimit: prof.rateLimit || '0/0',
+            pppoeProfile: name,
+            ipPool: prof.remoteAddress || null,
+            billingCycle: 30,
+            isActive: true,
+          }));
+          rc++; created++;
+        } catch (e) {
+          saveErr = e?.message ?? 'gagal simpan';
+          break; // error simpan biasanya sama utk semua (mis. kolom hilang)
+        }
       }
-      perRouter.push({ router: r.name, created: rc, skipped: rs });
+      perRouter.push({ router: r.name, created: rc, skipped: rs, error: saveErr });
     }
 
     return { created, skipped, routers: perRouter };
+   } catch (e) {
+    return { created: 0, skipped: 0, routers: [], error: e?.message ?? 'internal error' };
+   }
   }
 
   async create(dto: UpsertPackageDto) {

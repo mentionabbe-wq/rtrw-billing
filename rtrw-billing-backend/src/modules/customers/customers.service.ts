@@ -28,7 +28,9 @@ export class CustomersService {
    * Idempotent: pppoeUser yang sudah ada dilewati.
    */
   async syncFromMikrotik() {
+   try {
     const routers = await this.routers.find();
+    if (!routers.length) return { created: 0, skipped: 0, routers: [], error: 'Belum ada router. Tambah router di Pengaturan dulu.' };
     const allPackages = await this.packages.find();
     const pkgByProfile = new Map(allPackages.filter((p) => p.pppoeProfile).map((p) => [p.pppoeProfile, p]));
 
@@ -53,39 +55,46 @@ export class CustomersService {
         continue;
       }
 
-      let rc = 0, rs = 0;
+      let rc = 0, rs = 0, saveErr: string | undefined;
       for (const sec of secrets) {
         const pppoeUser: string = sec.name;
         if (!pppoeUser || existing.has(pppoeUser)) { rs++; skipped++; continue; }
         existing.add(pppoeUser);
+        try {
+          const customer = await this.repo.save(this.repo.create({
+            customerNo: 'CST' + String(nextNo++).padStart(6, '0'),
+            fullName: (sec.comment && String(sec.comment).trim()) || pppoeUser,
+            phoneEnc: this.crypto.encrypt('')!, // phone wajib, kosong dulu
+            status: sec.disabled ? 'suspended' : 'active',
+          }));
 
-        const customer = await this.repo.save(this.repo.create({
-          customerNo: 'CST' + String(nextNo++).padStart(6, '0'),
-          fullName: (sec.comment && String(sec.comment).trim()) || pppoeUser,
-          phoneEnc: this.crypto.encrypt('')!, // phone wajib, kosong dulu
-          status: sec.disabled ? 'suspended' : 'active',
-        }));
+          const pkg = pkgByProfile.get(sec.profile);
+          const cycle = pkg?.billingCycle || 30;
+          const due = new Date(today);
+          due.setDate(due.getDate() + cycle);
 
-        const pkg = pkgByProfile.get(sec.profile);
-        const cycle = pkg?.billingCycle || 30;
-        const due = new Date(today);
-        due.setDate(due.getDate() + cycle);
-
-        await this.subs.save(this.subs.create({
-          customer,
-          package: pkg ?? null,
-          router: r,
-          connType: 'pppoe',
-          pppoeUser,
-          status: sec.disabled ? 'suspended' : 'active',
-          dueDate: due.toISOString().slice(0, 10),
-        }));
-        rc++; created++;
+          await this.subs.save(this.subs.create({
+            customer,
+            package: pkg ?? null,
+            router: r,
+            connType: 'pppoe',
+            pppoeUser,
+            status: sec.disabled ? 'suspended' : 'active',
+            dueDate: due.toISOString().slice(0, 10),
+          }));
+          rc++; created++;
+        } catch (e) {
+          saveErr = e?.message ?? 'gagal simpan';
+          break;
+        }
       }
-      perRouter.push({ router: r.name, created: rc, skipped: rs });
+      perRouter.push({ router: r.name, created: rc, skipped: rs, error: saveErr });
     }
 
     return { created, skipped, routers: perRouter };
+   } catch (e) {
+    return { created: 0, skipped: 0, routers: [], error: e?.message ?? 'internal error' };
+   }
   }
 
   async create(dto: CreateCustomerDto): Promise<{ id: string; customerNo: string }> {
