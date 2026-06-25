@@ -38,13 +38,13 @@ export function Layout() {
       {/* Sidebar */}
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 z-30 w-64 transform border-r border-brand-100 bg-white/80 backdrop-blur transition-transform lg:static lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-30 w-64 transform bg-gradient-to-b from-[#012b6d] via-[#01337f] to-[#0246a8] text-blue-50 shadow-xl transition-transform lg:static lg:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        <div className="flex h-16 items-center gap-2 border-b border-brand-100 bg-gradient-to-r from-brand-50 to-sky-50 px-5">
-          <Wifi className="text-brand-600" size={22} />
-          <span className="font-semibold text-brand-700">RT/RW Net</span>
+        <div className="flex h-16 items-center gap-2 border-b border-white/10 px-5">
+          <Wifi className="text-amber-400" size={22} />
+          <span className="font-semibold tracking-wide text-white">RT/RW Net</span>
         </div>
         <nav className="space-y-1 p-3">
           {nav.filter((n) => !n.cap || can(user?.role, n.cap)).map((n) => (
@@ -55,8 +55,10 @@ export function Layout() {
               onClick={() => setOpen(false)}
               className={({ isActive }) =>
                 clsx(
-                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium',
-                  isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100',
+                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition',
+                  isActive
+                    ? 'bg-white/15 text-white shadow-sm ring-1 ring-inset ring-amber-400/40 border-l-4 border-amber-400 pl-2'
+                    : 'text-blue-100 hover:bg-white/10 hover:text-white',
                 )
               }
             >
