@@ -71,11 +71,34 @@ export class RoutersService {
   }
 
   async test(id: string) {
+    const r = await this.get(id);
+    const info = await this.mikrotik.testConnection(r);
+    await this.repo.update(id, {
+      status: info.ok ? 'online' : 'offline',
+      lastSeenAt: info.ok ? new Date() : r.lastSeenAt,
+    });
+    return { id, ...info };
+  }
+
+  /** Sesi PPPoE/hotspot yang sedang online (Mikrotik -> app). */
+  async active(id: string) {
+    return this.mikrotik.listActive(await this.get(id));
+  }
+
+  /** Daftar PPP profile + rate-limit (untuk memetakan paket). */
+  async profiles(id: string) {
+    return this.mikrotik.listProfiles(await this.get(id));
+  }
+
+  /** Daftar PPP secret di router (discovery / rekonsiliasi pelanggan). */
+  async secrets(id: string) {
+    return this.mikrotik.listSecrets(await this.get(id));
+  }
+
+  private async get(id: string) {
     const r = await this.repo.findOne({ where: { id } });
     if (!r) throw new NotFoundException('Router not found');
-    const ok = await this.mikrotik.ping(r);
-    await this.repo.update(id, { status: ok ? 'online' : 'offline', lastSeenAt: ok ? new Date() : r.lastSeenAt });
-    return { id, ok };
+    return r;
   }
 }
 
@@ -92,6 +115,9 @@ export class RoutersController {
   @Patch(':id') update(@Param('id') id: string, @Body() dto: UpsertRouterDto) { return this.service.update(id, dto); }
   @Delete(':id') remove(@Param('id') id: string) { return this.service.remove(id); }
   @Post(':id/test') test(@Param('id') id: string) { return this.service.test(id); }
+  @Get(':id/active') active(@Param('id') id: string) { return this.service.active(id); }
+  @Get(':id/profiles') profiles(@Param('id') id: string) { return this.service.profiles(id); }
+  @Get(':id/secrets') secrets(@Param('id') id: string) { return this.service.secrets(id); }
 }
 
 @Module({

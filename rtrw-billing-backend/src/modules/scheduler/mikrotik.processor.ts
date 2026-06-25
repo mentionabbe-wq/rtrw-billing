@@ -42,7 +42,9 @@ export class MikrotikProcessor extends WorkerHost {
           await this.subs.update(sub.id, { status: 'active' });
           break;
         case 'set_bandwidth':
-          await this.mikrotik.setBandwidth(sub.router, sub, job.data.rateLimit);
+          await this.mikrotik.setBandwidth(
+            sub.router, sub, job.data.rateLimit, sub.package?.pppoeProfile,
+          );
           break;
       }
       await this.record(sub.id, job.name, 'success');

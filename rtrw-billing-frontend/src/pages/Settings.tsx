@@ -158,6 +158,14 @@ function OltsPanel() {
     mutationFn: (id: string) => api.delete(`/olts/${id}`),
     onSuccess: invalidate,
   });
+  const test = useMutation({
+    mutationFn: (id: string) => api.post(`/olts/${id}/test`),
+    onSuccess: (res: any) => {
+      invalidate();
+      const d = res?.data;
+      alert(d?.ok ? `OLT online ✓\n${d.description ?? ''}` : `OLT gagal koneksi:\n${d?.error ?? 'unknown'}`);
+    },
+  });
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -195,10 +203,14 @@ function OltsPanel() {
                 <tr key={o.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3 font-medium">{o.name}</td>
                   <td className="px-4 py-3 font-mono text-xs">{o.host}</td>
-                  <td className="px-4 py-3"><span className="badge bg-brand-50 text-brand-700 uppercase">{o.vendor}</span></td>
+                  <td className="px-4 py-3">
+                    <span className="badge bg-brand-50 text-brand-700 uppercase">{o.vendor}</span>
+                    <span className="badge ml-1 bg-slate-100 text-slate-500 uppercase">{o.snmpVersion ?? 'v3'}</span>
+                  </td>
                   <td className="px-4 py-3 font-mono text-xs">{o.snmpUser}</td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1">
+                      <button className="btn-ghost text-brand-600" title="Test koneksi" disabled={test.isPending} onClick={() => test.mutate(o.id)}><PlugZap size={16} /></button>
                       <button className="btn-ghost" title="Edit" onClick={() => setForm(o)}><Pencil size={16} /></button>
                       <button className="btn-ghost text-rose-600" title="Hapus" onClick={() => confirm(`Hapus OLT ${o.name}?`) && del.mutate(o.id)}><Trash2 size={16} /></button>
                     </div>

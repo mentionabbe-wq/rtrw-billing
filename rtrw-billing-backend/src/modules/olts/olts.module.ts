@@ -11,6 +11,8 @@ import { CryptoService } from '@common/crypto/crypto.service';
 import { JwtAuthGuard } from '@modules/auth/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { Roles } from '@common/decorators/roles.decorator';
+import { SnmpModule } from '@modules/snmp/snmp.module';
+import { SnmpService, OltTarget } from '@modules/snmp/snmp.service';
 
 export class UpsertOltDto {
   @IsOptional() @IsString() name?: string;
@@ -27,7 +29,16 @@ export class OltsService {
   constructor(
     @InjectRepository(Olt) private readonly repo: Repository<Olt>,
     private readonly crypto: CryptoService,
+    private readonly snmp: SnmpService,
   ) {}
+
+  /** Build SNMP target dari row OLT (kredensial terenkripsi). */
+  private target(o: Olt): OltTarget {
+    return {
+      host: o.host, vendor: o.vendor, version: o.snmpVersion,
+      snmpUser: o.snmpUser, authKeyEnc: o.snmpAuthEnc, privKeyEnc: o.snmpPrivEnc,
+    };
+  }
 
   /** Never expose SNMP keys. */
   private view(o: Olt) {
@@ -72,6 +83,22 @@ export class OltsService {
     await this.repo.delete(id);
     return { id, deleted: true };
   }
+
+  /** Test koneksi SNMP (OLT -> app): ambil sysDescr & update status. */
+  async test(id: string) {
+    const o = await this.repo.findOne({ where: { id } });
+    if (!o) throw new NotFoundException('OLT not found');
+    const info = await this.snmp.testConnection(this.target(o));
+    await this.repo.update(id, { status: info.ok ? 'online' : 'offline' });
+    return { id, ...info };
+  }
+
+  /** Scan/discovery semua ONU + redaman optik via SNMP walk (OLT -> app). */
+  async onus(id: string) {
+    const o = await this.repo.findOne({ where: { id } });
+    if (!o) throw new NotFoundException('OLT not found');
+    return this.snmp.walkOnu(this.target(o));
+  }
 }
 
 @ApiTags('olts')
@@ -86,10 +113,12 @@ export class OltsController {
   @Post() create(@Body() dto: UpsertOltDto) { return this.service.create(dto); }
   @Patch(':id') update(@Param('id') id: string, @Body() dto: UpsertOltDto) { return this.service.update(id, dto); }
   @Delete(':id') remove(@Param('id') id: string) { return this.service.remove(id); }
+  @Post(':id/test') test(@Param('id') id: string) { return this.service.test(id); }
+  @Get(':id/onus') onus(@Param('id') id: string) { return this.service.onus(id); }
 }
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Olt])],
+  imports: [TypeOrmModule.forFeature([Olt]), SnmpModule],
   controllers: [OltsController],
   providers: [OltsService],
 })

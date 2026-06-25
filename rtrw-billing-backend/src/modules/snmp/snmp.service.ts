@@ -49,6 +49,34 @@ export class SnmpService {
     });
   }
 
+  /** Test koneksi SNMP: ambil sysDescr (1.3.6.1.2.1.1.1.0). Jalan utk v2c & v3. */
+  async testConnection(olt: OltTarget): Promise<{ ok: boolean; description?: string; error?: string }> {
+    try {
+      const desc = await this.get(olt, '1.3.6.1.2.1.1.1.0');
+      return { ok: true, description: String(desc) };
+    } catch (err) {
+      return { ok: false, error: err?.message ?? String(err) };
+    }
+  }
+
+  /**
+   * Discovery: walk seluruh tabel rxPower OLT → daftar semua ONU + redaman-nya
+   * dalam satu pass (OLT -> app). Index OID = `${rxPowerOid}.${ifIndex}.${onuId}`.
+   */
+  async walkOnu(
+    olt: OltTarget,
+  ): Promise<Array<{ ifIndex: number; onuId: number; dBm: number | null; health: OpticalReading['health'] }>> {
+    const profile = getProfile(olt.vendor);
+    const rows = await this.walk(olt, profile.rxPowerOid);
+    return rows.map(({ oid, value }) => {
+      const parts = oid.split('.');
+      const onuId = Number(parts[parts.length - 1]);
+      const ifIndex = Number(parts[parts.length - 2]);
+      const dBm = profile.toDbm(Number(value));
+      return { ifIndex, onuId, dBm, health: this.classify(dBm) };
+    });
+  }
+
   async readOpticalPower(olt: OltTarget, ifIndex: number, onuId: number): Promise<OpticalReading> {
     const profile = getProfile(olt.vendor);
     const oid = `${profile.rxPowerOid}.${ifIndex}.${onuId}`;
@@ -83,6 +111,27 @@ export class SnmpService {
         if (snmp.isVarbindError(vb)) return reject(new Error(snmp.varbindError(vb)));
         resolve(vb.value);
       });
+    });
+  }
+
+  /** Walk subtree → kumpulkan {oid, value} sampai keluar dari baseOid. */
+  private walk(olt: OltTarget, baseOid: string): Promise<Array<{ oid: string; value: any }>> {
+    const session: any = this.session(olt);
+    const out: Array<{ oid: string; value: any }> = [];
+    return new Promise((resolve, reject) => {
+      session.subtree(
+        baseOid,
+        20,
+        (varbinds: any[]) => {
+          for (const vb of varbinds) {
+            if (!snmp.isVarbindError(vb)) out.push({ oid: vb.oid, value: vb.value });
+          }
+        },
+        (err: Error) => {
+          session.close();
+          err ? reject(err) : resolve(out);
+        },
+      );
     });
   }
 
