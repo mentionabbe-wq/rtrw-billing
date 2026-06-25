@@ -2,8 +2,10 @@ import { Module, Controller, Get, Injectable, UseGuards } from '@nestjs/common';
 import { TypeOrmModule, InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { Customer, Subscription, Invoice, DeviceMetric } from '@database/entities';
+import { Customer, Subscription, Invoice, DeviceMetric, Device, Router } from '@database/entities';
 import { JwtAuthGuard } from '@modules/auth/jwt-auth.guard';
+import { MikrotikModule } from '@modules/mikrotik/mikrotik.module';
+import { MikrotikService } from '@modules/mikrotik/mikrotik.service';
 
 @Injectable()
 export class DashboardService {
@@ -12,15 +14,28 @@ export class DashboardService {
     @InjectRepository(Subscription) private readonly subs: Repository<Subscription>,
     @InjectRepository(Invoice) private readonly invoices: Repository<Invoice>,
     @InjectRepository(DeviceMetric) private readonly metrics: Repository<DeviceMetric>,
+    @InjectRepository(Device) private readonly devices: Repository<Device>,
+    @InjectRepository(Router) private readonly routers: Repository<Router>,
+    private readonly mikrotik: MikrotikService,
   ) {}
 
   async stats() {
-    const [totalCustomers, active, suspended, unpaidInvoices] = await Promise.all([
+    const [totalCustomers, active, suspended, unpaidInvoices, onuActive] = await Promise.all([
       this.customers.count(),
       this.subs.count({ where: { status: 'active' } }),
       this.subs.count({ where: { status: 'suspended' } }),
       this.invoices.count({ where: { status: 'unpaid' } }),
+      this.devices.count({ where: { lastStatus: 'online' } }),
     ]);
+
+    // PPPoE aktif live — hanya router yang berstatus online (cepat & tak hang).
+    let pppoeActive = 0;
+    const onlineRouters = await this.routers.find({ where: { status: 'online' } });
+    await Promise.all(
+      onlineRouters.map(async (r) => {
+        try { pppoeActive += (await this.mikrotik.listActive(r)).length; } catch { /* skip */ }
+      }),
+    );
 
     // Aggregate traffic (last 12 buckets). Replace with a proper time_bucket query.
     const raw = await this.metrics
@@ -37,6 +52,8 @@ export class DashboardService {
       active,
       suspended,
       unpaidInvoices,
+      onuActive,
+      pppoeActive,
       trafficSeries: raw.reverse().map((r) => ({ t: r.t, mbps: Math.round(Number(r.mbps)) })),
     };
   }
@@ -55,7 +72,10 @@ export class DashboardController {
 }
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Customer, Subscription, Invoice, DeviceMetric])],
+  imports: [
+    TypeOrmModule.forFeature([Customer, Subscription, Invoice, DeviceMetric, Device, Router]),
+    MikrotikModule,
+  ],
   controllers: [DashboardController],
   providers: [DashboardService],
 })

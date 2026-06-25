@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Loader2, X, Pencil } from 'lucide-react';
+import { Plus, Loader2, X, Pencil, Trash2, Eraser } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCan } from '@/lib/rbac';
 
@@ -27,6 +27,7 @@ const statusTone: Record<string, string> = {
 export default function Customers() {
   const qc = useQueryClient();
   const canWrite = useCan('customers.write');
+  const canAdmin = useCan('settings.manage'); // hapus & clear-demo = admin
   const [mode, setMode] = useState<'closed' | 'create' | 'edit'>('closed');
   const [editing, setEditing] = useState<CustomerDetail | null>(null);
 
@@ -36,7 +37,22 @@ export default function Customers() {
   });
 
   const close = () => { setMode('closed'); setEditing(null); };
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['customers'] });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['customers'] });
+    qc.invalidateQueries({ queryKey: ['stats'] });
+    qc.invalidateQueries({ queryKey: ['subscriptions'] });
+  };
+
+  const delMut = useMutation({
+    mutationFn: (id: string) => api.delete(`/customers/${id}`),
+    onSuccess: invalidate,
+    onError: () => alert('Gagal menghapus pelanggan.'),
+  });
+  const clearDemo = useMutation({
+    mutationFn: () => api.post('/customers/clear-demo'),
+    onSuccess: () => { invalidate(); alert('Data demo dibersihkan. Set SEED_ON_START=false agar tak ter-isi ulang.'); },
+    onError: () => alert('Gagal membersihkan data demo.'),
+  });
 
   const createMut = useMutation({
     mutationFn: (body: any) => api.post('/customers', body),
@@ -75,11 +91,26 @@ export default function Customers() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Pelanggan</h1>
-        {canWrite && (
-          <button className="btn-primary" onClick={() => setMode('create')}>
-            <Plus size={16} /> Tambah
-          </button>
-        )}
+        <div className="flex gap-2">
+          {canAdmin && (
+            <button
+              className="btn-ghost text-rose-600"
+              disabled={clearDemo.isPending}
+              onClick={() => {
+                if (confirm('Hapus SEMUA data pelanggan/langganan/ONU/tagihan (data demo)?\nPaket, router, dan OLT tidak dihapus. Tindakan ini permanen.'))
+                  clearDemo.mutate();
+              }}
+              title="Bersihkan semua data demo"
+            >
+              {clearDemo.isPending ? <Loader2 className="animate-spin" size={16} /> : <Eraser size={16} />} Hapus Data Demo
+            </button>
+          )}
+          {canWrite && (
+            <button className="btn-primary" onClick={() => setMode('create')}>
+              <Plus size={16} /> Tambah
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="card overflow-hidden">
@@ -108,12 +139,27 @@ export default function Customers() {
                   <td className="px-4 py-3 text-slate-500">
                     {new Date(c.createdAt).toLocaleDateString('id-ID')}
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    {canWrite && (
-                      <button className="btn-ghost" onClick={() => openEdit(c.id)} title="Edit">
-                        <Pencil size={16} />
-                      </button>
-                    )}
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-1">
+                      {canWrite && (
+                        <button className="btn-ghost" onClick={() => openEdit(c.id)} title="Edit">
+                          <Pencil size={16} />
+                        </button>
+                      )}
+                      {canAdmin && (
+                        <button
+                          className="btn-ghost text-rose-600"
+                          disabled={delMut.isPending}
+                          onClick={() => {
+                            if (confirm(`Hapus pelanggan ${c.fullName} beserta langganan, ONU, & tagihannya?`))
+                              delMut.mutate(c.id);
+                          }}
+                          title="Hapus pelanggan"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

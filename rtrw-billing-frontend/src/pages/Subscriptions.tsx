@@ -118,25 +118,29 @@ export default function Subscriptions() {
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-2">
                       {!canWrite && <span className="text-xs text-slate-400">—</span>}
-                      {canWrite && (s.status === 'active' ? (
-                        <button
-                          className="btn-ghost text-amber-600"
-                          disabled={access.isPending}
-                          onClick={() => access.mutate({ id: s.id, action: 'suspend' })}
-                          title="Suspend"
-                        >
-                          <Pause size={16} /> Suspend
-                        </button>
-                      ) : (
-                        <button
-                          className="btn-ghost text-emerald-600"
-                          disabled={access.isPending}
-                          onClick={() => access.mutate({ id: s.id, action: 'activate' })}
-                          title="Aktifkan"
-                        >
-                          <Play size={16} /> Aktifkan
-                        </button>
-                      ))}
+                      {canWrite && (
+                        <>
+                          <button
+                            className="btn-ghost text-emerald-600 disabled:opacity-40"
+                            disabled={access.isPending || s.status === 'active'}
+                            onClick={() => access.mutate({ id: s.id, action: 'activate' })}
+                            title="Aktifkan (kirim ke Mikrotik)"
+                          >
+                            <Play size={16} /> Aktifkan
+                          </button>
+                          <button
+                            className="btn-ghost text-amber-600 disabled:opacity-40"
+                            disabled={access.isPending || s.status === 'suspended'}
+                            onClick={() => {
+                              if (confirm(`Suspend ${s.customerName}? Koneksi PPPoE akan diputus.`))
+                                access.mutate({ id: s.id, action: 'suspend' });
+                            }}
+                            title="Suspend (kirim ke Mikrotik)"
+                          >
+                            <Pause size={16} /> Suspend
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

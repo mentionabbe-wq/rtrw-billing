@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@modules/auth/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
@@ -34,5 +34,18 @@ export class CustomersController {
   @Roles('admin', 'operator')
   update(@Param('id') id: string, @Body() dto: UpdateCustomerDto) {
     return this.service.update(id, dto);
+  }
+
+  /** Hapus semua data demo/pelanggan (admin). Definisikan SEBELUM :id. */
+  @Post('clear-demo')
+  @Roles('admin')
+  clearDemo() {
+    return this.service.clearDemo();
+  }
+
+  @Delete(':id')
+  @Roles('admin')
+  remove(@Param('id') id: string) {
+    return this.service.remove(id);
   }
 }

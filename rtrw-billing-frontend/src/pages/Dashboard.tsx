@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import { Users, UserCheck, UserX, Receipt } from 'lucide-react';
+import { Users, Wifi, Radio, Receipt } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getMonitoringSocket, OnuStatusEvent } from '@/lib/socket';
 
@@ -12,6 +12,8 @@ interface Stats {
   active: number;
   suspended: number;
   unpaidInvoices: number;
+  onuActive: number;
+  pppoeActive: number;
   trafficSeries: { t: string; mbps: number }[];
 }
 
@@ -57,9 +59,9 @@ export default function Dashboard() {
       <h1 className="text-xl font-semibold">Dashboard</h1>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={Users} label="Total Pelanggan" value={data?.totalCustomers ?? '—'} tone="bg-brand-50 text-brand-600" />
-        <StatCard icon={UserCheck} label="Aktif" value={data?.active ?? '—'} tone="bg-emerald-50 text-emerald-600" />
-        <StatCard icon={UserX} label="Suspended" value={data?.suspended ?? '—'} tone="bg-amber-50 text-amber-600" />
+        <StatCard icon={Users} label="Pelanggan" value={data?.totalCustomers ?? '—'} tone="bg-brand-50 text-brand-600" />
+        <StatCard icon={Wifi} label="PPPoE Aktif" value={data?.pppoeActive ?? '—'} tone="bg-emerald-50 text-emerald-600" />
+        <StatCard icon={Radio} label="ONU Aktif" value={data?.onuActive ?? '—'} tone="bg-sky-50 text-sky-600" />
         <StatCard icon={Receipt} label="Tagihan Belum Bayar" value={data?.unpaidInvoices ?? '—'} tone="bg-rose-50 text-rose-600" />
       </div>
 

@@ -12,6 +12,7 @@ const nav: { to: string; label: string; icon: any; end?: boolean; cap?: Capabili
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/customers', label: 'Pelanggan', icon: Users },
   { to: '/subscriptions', label: 'Langganan', icon: Network },
+  { to: '/pppoe', label: 'PPPoE Aktif', icon: Wifi },
   { to: '/packages', label: 'Paket', icon: Package },
   { to: '/invoices', label: 'Tagihan', icon: Receipt },
   { to: '/monitoring', label: 'Monitoring ONU', icon: Activity },

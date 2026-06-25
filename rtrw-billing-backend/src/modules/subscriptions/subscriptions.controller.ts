@@ -17,6 +17,12 @@ export class SubscriptionsController {
     return this.service.findAll();
   }
 
+  /** PPPoE aktif live + sisa masa aktif. Definisikan SEBELUM route :id apa pun. */
+  @Get('pppoe-active')
+  pppoeActive() {
+    return this.service.pppoeActive();
+  }
+
   @Patch(':id/package')
   @Roles('admin', 'operator')
   changePackage(@Param('id') id: string, @Body('packageId') packageId: string) {

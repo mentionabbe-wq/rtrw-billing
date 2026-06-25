@@ -7,6 +7,7 @@ import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Customers from '@/pages/Customers';
 import Subscriptions from '@/pages/Subscriptions';
+import PppoeActive from '@/pages/PppoeActive';
 import Packages from '@/pages/Packages';
 import Invoices from '@/pages/Invoices';
 import Monitoring from '@/pages/Monitoring';
@@ -34,6 +35,7 @@ export default function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/customers" element={<Customers />} />
         <Route path="/subscriptions" element={<Subscriptions />} />
+        <Route path="/pppoe" element={<PppoeActive />} />
         <Route path="/packages" element={<Packages />} />
         <Route path="/invoices" element={<Invoices />} />
         <Route path="/monitoring" element={<Monitoring />} />

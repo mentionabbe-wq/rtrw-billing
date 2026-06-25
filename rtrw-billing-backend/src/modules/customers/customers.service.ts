@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { CryptoService } from '@common/crypto/crypto.service';
 import { Customer } from '@database/entities';
 import { CreateCustomerDto } from './dto/create-customer.dto';
@@ -11,6 +11,7 @@ export class CustomersService {
   constructor(
     @InjectRepository(Customer) private readonly repo: Repository<Customer>,
     private readonly crypto: CryptoService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async create(dto: CreateCustomerDto): Promise<{ id: string; customerNo: string }> {
@@ -45,6 +46,43 @@ export class CustomersService {
   async findAll() {
     const rows = await this.repo.find({ order: { id: 'DESC' }, take: 200 });
     return rows.map((c) => this.toView(c));
+  }
+
+  /**
+   * Hapus 1 pelanggan + seluruh data turunannya. subscriptions & devices
+   * ON DELETE CASCADE; invoices & payments harus dibuang manual (FK restrict).
+   */
+  async remove(id: string) {
+    const c = await this.repo.findOne({ where: { id } });
+    if (!c) throw new NotFoundException('Customer not found');
+    await this.dataSource.transaction(async (m) => {
+      await m.query(
+        `DELETE FROM payments WHERE invoice_id IN (
+           SELECT i.id FROM invoices i
+           JOIN subscriptions s ON i.subscription_id = s.id
+           WHERE s.customer_id = $1)`, [id]);
+      await m.query(
+        `DELETE FROM invoices WHERE subscription_id IN (
+           SELECT id FROM subscriptions WHERE customer_id = $1)`, [id]);
+      await m.query(`DELETE FROM customers WHERE id = $1`, [id]); // cascade subs+devices
+    });
+    return { id, deleted: true };
+  }
+
+  /**
+   * Bersihkan SEMUA data demo/pelanggan (pelanggan, langganan, ONU, tagihan,
+   * pembayaran, log, metrik). Paket/router/OLT/user TIDAK dihapus.
+   * Set SEED_ON_START=false agar tidak ter-seed ulang.
+   */
+  async clearDemo() {
+    await this.dataSource.transaction(async (m) => {
+      await m.query('DELETE FROM payments');
+      await m.query('DELETE FROM invoices');
+      await m.query('DELETE FROM customers'); // cascade subscriptions + devices
+      await m.query('DELETE FROM mikrotik_sync_logs');
+      await m.query('DELETE FROM device_metrics');
+    });
+    return { cleared: true };
   }
 
   async findOne(id: string) {

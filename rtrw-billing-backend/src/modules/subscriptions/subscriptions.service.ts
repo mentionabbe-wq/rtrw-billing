@@ -3,7 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
-import { Subscription, ServicePackage } from '@database/entities';
+import { Subscription, ServicePackage, Router } from '@database/entities';
+import { MikrotikService } from '@modules/mikrotik/mikrotik.service';
 import {
   MIKROTIK_QUEUE, MikrotikJobData, DEFAULT_JOB_OPTS,
 } from '@modules/scheduler/queue.constants';
@@ -13,8 +14,51 @@ export class SubscriptionsService {
   constructor(
     @InjectRepository(Subscription) private readonly subs: Repository<Subscription>,
     @InjectRepository(ServicePackage) private readonly packages: Repository<ServicePackage>,
+    @InjectRepository(Router) private readonly routers: Repository<Router>,
     @InjectQueue(MIKROTIK_QUEUE) private readonly queue: Queue<MikrotikJobData>,
+    private readonly mikrotik: MikrotikService,
   ) {}
+
+  /**
+   * PPPoE yang sedang aktif (live dari Mikrotik) digabung data langganan →
+   * nama pelanggan, paket, jatuh tempo, dan SISA MASA AKTIF (hari). Hanya
+   * polling router berstatus online agar tidak hang pada router mati.
+   */
+  async pppoeActive() {
+    const routers = await this.routers.find();
+    const subs = await this.subs.find({ relations: { customer: true, package: true } });
+    const byUser = new Map<string, Subscription>();
+    for (const s of subs) if (s.pppoeUser) byUser.set(s.pppoeUser, s);
+
+    const today = Date.now();
+    const out: any[] = [];
+    for (const r of routers) {
+      if (r.status === 'offline') continue;
+      let active: any[] = [];
+      try { active = await this.mikrotik.listActive(r); } catch { continue; }
+      for (const a of active) {
+        const sub = byUser.get(a.name);
+        let remainingDays: number | null = null;
+        if (sub?.dueDate) {
+          const due = new Date(sub.dueDate + 'T00:00:00Z').getTime();
+          remainingDays = Math.ceil((due - today) / 86400000);
+        }
+        out.push({
+          pppoeUser: a.name,
+          address: a.address,
+          uptime: a.uptime,
+          callerId: a.callerId,
+          router: r.name,
+          customerName: sub?.customer?.fullName ?? null,
+          packageName: sub?.package?.name ?? null,
+          dueDate: sub?.dueDate ?? null,
+          remainingDays,
+          status: sub?.status ?? null,
+        });
+      }
+    }
+    return out;
+  }
 
   async findAll() {
     const rows = await this.subs.find({
