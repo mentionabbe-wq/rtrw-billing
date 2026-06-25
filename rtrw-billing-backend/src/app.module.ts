@@ -22,6 +22,7 @@ import { AuditModule } from '@modules/audit/audit.module';
 import { RoutersModule } from '@modules/routers/routers.module';
 import { OltsModule } from '@modules/olts/olts.module';
 import { UsersModule } from '@modules/users/users.module';
+import { GenieacsModule } from '@modules/genieacs/genieacs.module';
 import { SchedulerModule } from '@modules/scheduler/scheduler.module';
 
 @Module({
@@ -73,6 +74,7 @@ import { SchedulerModule } from '@modules/scheduler/scheduler.module';
     RoutersModule,
     OltsModule,
     UsersModule,
+    GenieacsModule,
     SchedulerModule,
   ],
 })

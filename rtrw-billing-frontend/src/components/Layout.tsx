@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Package, Receipt, Activity, LogOut, Menu, X, Wifi, Network,
-  Settings as SettingsIcon, ScrollText, UserCog, ShieldCheck,
+  Settings as SettingsIcon, ScrollText, UserCog, ShieldCheck, RadioTower,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuth } from '@/store/auth';
@@ -16,6 +16,7 @@ const nav: { to: string; label: string; icon: any; end?: boolean; cap?: Capabili
   { to: '/packages', label: 'Paket', icon: Package },
   { to: '/invoices', label: 'Tagihan', icon: Receipt },
   { to: '/monitoring', label: 'Monitoring ONU', icon: Activity },
+  { to: '/genieacs', label: 'ONU TR-069', icon: RadioTower },
   { to: '/settings', label: 'Pengaturan', icon: SettingsIcon, cap: 'settings.manage' },
   { to: '/users', label: 'Pengguna', icon: UserCog, cap: 'users.manage' },
   { to: '/audit', label: 'Audit Log', icon: ScrollText, cap: 'audit.view' },

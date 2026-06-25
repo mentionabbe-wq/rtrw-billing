@@ -21,6 +21,10 @@ services:
       # 64 hex (32 byte). GANTI dengan hasil: openssl rand -hex 32
       DATA_ENC_KEY: 0f1e2d3c4b5a69788796a5b4c3d2e1f00112233445566778899aabbccddeeff00
       SEED_ON_START: "true"
+      # Integrasi GenieACS (opsional) — isi URL NBI server GenieACS, mis. http://192.168.88.5:7557
+      GENIEACS_URL: ""
+      GENIEACS_USERNAME: ""
+      GENIEACS_PASSWORD: ""
     ports:
       - "3000:3000"
     depends_on:

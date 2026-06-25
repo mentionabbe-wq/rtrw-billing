@@ -11,6 +11,7 @@ import PppoeActive from '@/pages/PppoeActive';
 import Packages from '@/pages/Packages';
 import Invoices from '@/pages/Invoices';
 import Monitoring from '@/pages/Monitoring';
+import Genieacs from '@/pages/Genieacs';
 import Settings from '@/pages/Settings';
 import Audit from '@/pages/Audit';
 import Users from '@/pages/Users';
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="/packages" element={<Packages />} />
         <Route path="/invoices" element={<Invoices />} />
         <Route path="/monitoring" element={<Monitoring />} />
+        <Route path="/genieacs" element={<Genieacs />} />
         <Route path="/settings" element={<RequireCap cap="settings.manage"><Settings /></RequireCap>} />
         <Route path="/audit" element={<RequireCap cap="audit.view"><Audit /></RequireCap>} />
         <Route path="/users" element={<RequireCap cap="users.manage"><Users /></RequireCap>} />

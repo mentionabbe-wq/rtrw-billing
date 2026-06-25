@@ -19,6 +19,12 @@ export default () => ({
     refreshExpires: process.env.JWT_REFRESH_EXPIRES || '7d',
   },
   encKey: process.env.DATA_ENC_KEY,
+  genieacs: {
+    // URL NBI GenieACS, mis. http://192.168.88.5:7557 (kosong = fitur nonaktif)
+    url: process.env.GENIEACS_URL || '',
+    username: process.env.GENIEACS_USERNAME || '',
+    password: process.env.GENIEACS_PASSWORD || '',
+  },
   monitoring: {
     snmpPollCron: process.env.SNMP_POLL_CRON || '*/5 * * * *',
     suspendCron: process.env.SUSPEND_CRON || '5 0 * * *',
