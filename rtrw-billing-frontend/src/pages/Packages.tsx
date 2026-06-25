@@ -1,6 +1,6 @@
 import { FormEvent, ReactNode, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, X, Loader2, Network, Save } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Loader2, Network, Save, RefreshCw } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCan } from '@/lib/rbac';
 
@@ -36,13 +36,35 @@ export default function Packages() {
     mutationFn: (id: string) => api.delete(`/packages/${id}`),
     onSuccess: invalidate,
   });
+  const sync = useMutation({
+    mutationFn: () => api.post('/packages/sync-mikrotik'),
+    onSuccess: (res: any) => {
+      invalidate();
+      const d = res?.data ?? {};
+      const detail = (d.routers ?? [])
+        .map((r: any) => `• ${r.router}: +${r.created} baru, ${r.skipped} dilewati${r.error ? ` (${r.error})` : ''}`)
+        .join('\n');
+      alert(`Sinkron paket dari Mikrotik selesai.\nTotal: ${d.created ?? 0} paket baru, ${d.skipped ?? 0} dilewati.\n\n${detail}\n\nLengkapi HARGA tiap paket baru (default 0).`);
+    },
+    onError: (e: any) => alert(`Gagal sinkron: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
+  });
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Paket Layanan</h1>
         {canManage && (
-          <button className="btn-primary" onClick={() => setForm({})}><Plus size={16} /> Tambah Paket</button>
+          <div className="flex gap-2">
+            <button
+              className="btn-ghost text-brand-600"
+              disabled={sync.isPending}
+              onClick={() => sync.mutate()}
+              title="Tarik PPP profile dari Mikrotik jadi paket"
+            >
+              {sync.isPending ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />} Sinkron
+            </button>
+            <button className="btn-primary" onClick={() => setForm({})}><Plus size={16} /> Tambah Paket</button>
+          </div>
         )}
       </div>
 
