@@ -38,6 +38,7 @@ export class MonitorProcessor extends WorkerHost {
     const olt: OltTarget = {
       host: oltRow.host,
       vendor: oltRow.vendor,
+      version: oltRow.snmpVersion,
       snmpUser: oltRow.snmpUser,
       authKeyEnc: oltRow.snmpAuthEnc,
       privKeyEnc: oltRow.snmpPrivEnc,

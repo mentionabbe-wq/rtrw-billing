@@ -27,7 +27,8 @@ export class MonitoringService {
 
     await this.snmp.setOnuAdminStatus(
       {
-        host: olt.host, vendor: olt.vendor, snmpUser: olt.snmpUser,
+        host: olt.host, vendor: olt.vendor, version: olt.snmpVersion,
+        snmpUser: olt.snmpUser,
         authKeyEnc: olt.snmpAuthEnc, privKeyEnc: olt.snmpPrivEnc,
       },
       device.oltIfIndex,

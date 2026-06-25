@@ -7,6 +7,8 @@ import { getProfile, OltVendor } from './vendor-profiles';
 export interface OltTarget {
   host: string;
   vendor: OltVendor | string;
+  /** 'v3' (authPriv) atau 'v2c' (community = snmpUser). Default v3. */
+  version?: string;
   snmpUser: string;
   authKeyEnc: Buffer;
   privKeyEnc: Buffer;
@@ -32,6 +34,11 @@ export class SnmpService {
   ) {}
 
   private session(olt: OltTarget): any {
+    // v2c: community = snmpUser. Dipakai banyak OLT EPON murah (mis. C-Data).
+    if ((olt.version ?? 'v3').toLowerCase() === 'v2c') {
+      return snmp.createSession(olt.host, olt.snmpUser, { version: snmp.Version2c });
+    }
+    // v3 authPriv (default).
     return snmp.createV3Session(olt.host, {
       name: olt.snmpUser,
       level: snmp.SecurityLevel.authPriv,
@@ -67,7 +74,7 @@ export class SnmpService {
   }
 
   private get(olt: OltTarget, oid: string): Promise<number | string> {
-    const session = this.session(olt);
+    const session: any = this.session(olt);
     return new Promise((resolve, reject) => {
       session.get([oid], (err: Error, varbinds: any[]) => {
         session.close();

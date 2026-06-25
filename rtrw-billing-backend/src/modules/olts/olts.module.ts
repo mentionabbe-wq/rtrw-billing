@@ -15,7 +15,8 @@ import { Roles } from '@common/decorators/roles.decorator';
 export class UpsertOltDto {
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsString() host?: string;
-  @IsOptional() @IsIn(['zte', 'huawei', 'generic']) vendor?: string;
+  @IsOptional() @IsIn(['zte', 'huawei', 'cdata', 'generic']) vendor?: string;
+  @IsOptional() @IsIn(['v2c', 'v3']) snmpVersion?: string;
   @IsOptional() @IsString() snmpUser?: string;
   @IsOptional() @IsString() snmpAuthKey?: string; // plain -> encrypted
   @IsOptional() @IsString() snmpPrivKey?: string; // plain -> encrypted
@@ -32,7 +33,7 @@ export class OltsService {
   private view(o: Olt) {
     return {
       id: o.id, name: o.name, host: o.host, vendor: o.vendor,
-      snmpUser: o.snmpUser, status: o.status,
+      snmpVersion: o.snmpVersion, snmpUser: o.snmpUser, status: o.status,
       hasAuthKey: !!o.snmpAuthEnc, hasPrivKey: !!o.snmpPrivEnc,
     };
   }
@@ -46,6 +47,7 @@ export class OltsService {
       name: dto.name,
       host: dto.host,
       vendor: dto.vendor ?? 'generic',
+      snmpVersion: dto.snmpVersion ?? 'v3',
       snmpUser: dto.snmpUser,
       snmpAuthEnc: this.crypto.encrypt(dto.snmpAuthKey ?? '')!,
       snmpPrivEnc: this.crypto.encrypt(dto.snmpPrivKey ?? '')!,
@@ -59,6 +61,7 @@ export class OltsService {
     if (dto.name !== undefined) o.name = dto.name;
     if (dto.host !== undefined) o.host = dto.host;
     if (dto.vendor !== undefined) o.vendor = dto.vendor;
+    if (dto.snmpVersion !== undefined) o.snmpVersion = dto.snmpVersion;
     if (dto.snmpUser !== undefined) o.snmpUser = dto.snmpUser;
     if (dto.snmpAuthKey) o.snmpAuthEnc = this.crypto.encrypt(dto.snmpAuthKey)!;
     if (dto.snmpPrivKey) o.snmpPrivEnc = this.crypto.encrypt(dto.snmpPrivKey)!;

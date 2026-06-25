@@ -8,7 +8,7 @@
  *
  * Index OID = `${rxPowerOid}.${ifIndex}.${onuId}` (ifIndex = PON port, onuId = ONU/ONT id).
  */
-export type OltVendor = 'zte' | 'huawei' | 'generic';
+export type OltVendor = 'zte' | 'huawei' | 'cdata' | 'generic';
 
 /** Sentinel "tidak ada sinyal / LOS" yang umum dikembalikan OLT. */
 const NO_SIGNAL = [2147483647, -2147483648, 65535, 0];
@@ -50,6 +50,24 @@ export const VENDOR_PROFILES: Record<OltVendor, VendorProfile> = {
     adminUp: 1,
     adminDown: 2,
     toDbm: (raw) => (NO_SIGNAL.includes(raw) ? null : raw / 1000),
+  },
+
+  // ---------------- C-Data (FD11xx / FD12xx EPON-GPON) ----------------
+  // ⚠️ BELUM DIVALIDASI. OID di bawah adalah titik-awal yang paling umum dipakai
+  // C-Data; firmware C-Data sangat bervariasi (banyak yang hanya SNMP v2c community,
+  // bukan v3). Begitu Anda bisa akses OLT, jalankan:
+  //   snmpwalk -v2c -c <community> <ip-olt> 1.3.6.1.4.1 | grep -i -E "power|optical|rx|tx"
+  // lalu samakan rxPowerOid/txPowerOid + skala `toDbm()` di bawah.
+  cdata: {
+    label: 'C-Data FD11xx/FD12xx (UNVALIDATED)',
+    rxPowerOid: '1.3.6.1.4.1.17409.2.8.4.1.1.5',
+    txPowerOid: '1.3.6.1.4.1.17409.2.8.4.1.1.4',
+    adminStatusOid: '1.3.6.1.4.1.17409.2.8.2.1.1.2',
+    adminUp: 1,
+    adminDown: 2,
+    // Banyak EPON OLT mengembalikan unit 0.1 dBm (dBm = raw/10). VALIDASI dulu —
+    // jika hasil tampak ~10x terlalu besar/kecil, ganti pembagi ke /100 atau /1.
+    toDbm: (raw) => (NO_SIGNAL.includes(raw) ? null : raw / 10),
   },
 
   // ---------------- Fallback ----------------

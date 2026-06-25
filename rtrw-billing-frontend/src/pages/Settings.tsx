@@ -8,7 +8,7 @@ interface Router {
   apiUsername: string; status: string; hasSecret: boolean;
 }
 interface Olt {
-  id: string; name: string; host: string; vendor: string;
+  id: string; name: string; host: string; vendor: string; snmpVersion: string;
   snmpUser: string; status: string; hasAuthKey: boolean; hasPrivKey: boolean;
 }
 
@@ -164,7 +164,8 @@ function OltsPanel() {
     const fd = new FormData(e.currentTarget);
     const body: any = {
       name: fd.get('name'), host: fd.get('host'),
-      vendor: fd.get('vendor'), snmpUser: fd.get('snmpUser'),
+      vendor: fd.get('vendor'), snmpVersion: fd.get('snmpVersion'),
+      snmpUser: fd.get('snmpUser'),
     };
     if (fd.get('snmpAuthKey')) body.snmpAuthKey = fd.get('snmpAuthKey');
     if (fd.get('snmpPrivKey')) body.snmpPrivKey = fd.get('snmpPrivKey');
@@ -218,11 +219,17 @@ function OltsPanel() {
             <select name="vendor" className="input" defaultValue={form.vendor ?? 'zte'}>
               <option value="zte">ZTE (C300/C320)</option>
               <option value="huawei">Huawei (MA56xx/MA58xx)</option>
+              <option value="cdata">C-Data (FD11xx/FD12xx)</option>
               <option value="generic">Generic</option>
             </select>
-            <input name="snmpUser" className="input" placeholder="SNMPv3 user" defaultValue={form.snmpUser} required />
-            <input name="snmpAuthKey" type="password" className="input" placeholder={form.id ? 'Auth key (kosongkan = tetap)' : 'SNMPv3 auth key (SHA)'} />
-            <input name="snmpPrivKey" type="password" className="input" placeholder={form.id ? 'Priv key (kosongkan = tetap)' : 'SNMPv3 priv key (AES)'} />
+            <select name="snmpVersion" className="input" defaultValue={form.snmpVersion ?? 'v3'}>
+              <option value="v3">SNMP v3 (authPriv) — ZTE/Huawei</option>
+              <option value="v2c">SNMP v2c (community) — C-Data/EPON</option>
+            </select>
+            <input name="snmpUser" className="input" placeholder="SNMPv3 user / v2c community" defaultValue={form.snmpUser} required />
+            <p className="text-xs text-slate-400 -mt-1">Untuk v2c: isi community (mis. <span className="font-mono">public</span>) di kolom atas; auth/priv key di bawah dikosongkan.</p>
+            <input name="snmpAuthKey" type="password" className="input" placeholder={form.id ? 'Auth key (kosongkan = tetap)' : 'SNMPv3 auth key (SHA) — kosongkan utk v2c'} />
+            <input name="snmpPrivKey" type="password" className="input" placeholder={form.id ? 'Priv key (kosongkan = tetap)' : 'SNMPv3 priv key (AES) — kosongkan utk v2c'} />
             {save.isError && <p className="text-sm text-red-600">Gagal menyimpan.</p>}
             <button className="btn-primary w-full" disabled={save.isPending}>{save.isPending && <Loader2 className="animate-spin" size={16} />} Simpan</button>
           </form>

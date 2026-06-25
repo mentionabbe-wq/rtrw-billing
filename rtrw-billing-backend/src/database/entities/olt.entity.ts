@@ -15,10 +15,15 @@ export class Olt {
   @Column({ type: 'inet', unique: true })
   host: string;
 
-  /** zte | huawei | bdcom | ... (drives which OID base to use) */
+  /** zte | huawei | cdata | generic (drives which OID base to use) */
   @Column({ type: 'varchar', default: 'generic' })
   vendor: string;
 
+  /** SNMP transport: 'v3' (authPriv) atau 'v2c' (community = snmpUser). */
+  @Column({ name: 'snmp_version', type: 'varchar', default: 'v3' })
+  snmpVersion: string;
+
+  /** v3 SNMPv3 user, atau community string saat snmpVersion = 'v2c'. */
   @Column({ name: 'snmp_user' })
   snmpUser: string;
 
