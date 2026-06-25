@@ -9,7 +9,117 @@ Aplikasi ini terdiri dari **2 komponen terpisah** yang bisa dipasang sesuai kebu
 
 ---
 
-## A. Instalasi di CasaOS (Linux / Mini-PC / Raspberry Pi)
+## PILIHAN METODE INSTALASI
+
+| Metode | Cocok untuk | Butuh GitHub Public? |
+|---|---|---|
+| [A. CasaOS via GHCR](#a-instalasi-di-casaos-via-ghcr) | Server/mini-PC dengan CasaOS | ✅ Ya |
+| [B. Build dari Source (tanpa GitHub Public)](#b-instalasi-lokal-build-dari-source) | Komputer dengan kode sumber | ❌ Tidak |
+| [C. Windows — Docker Desktop](#c-instalasi-di-windows-via-docker-desktop) | Windows 10/11 | Bisa keduanya |
+| [D. Login GHCR (private)](#d-alternatif-login-ghcr-tanpa-public) | Sudah punya akun GitHub | ❌ Tidak |
+
+---
+
+## B. Instalasi Lokal — Build dari Source
+
+> **Tidak perlu GitHub Public.** Gunakan cara ini jika kode sudah ada di komputer (clone dari repo private Anda).
+
+### Prasyarat
+- **Docker Desktop** (Windows/Mac) atau **Docker Engine** (Linux) sudah terpasang
+- Kode sumber sudah di-clone: `git clone https://github.com/mentionabbe-wq/rtrw-billing`
+
+### Langkah 1 — Masuk ke Folder Repo
+
+**Windows (PowerShell/CMD):**
+```cmd
+cd C:\path\ke\rtrw-billing
+```
+
+**Linux/Mac:**
+```bash
+cd /path/ke/rtrw-billing
+```
+
+### Langkah 2 — Edit Konfigurasi
+
+Buka file `docker-compose.local.yml` dengan editor teks, ganti nilai berikut:
+
+```yaml
+DB_PASS: password-database-anda        # ganti dengan password sesuka Anda
+JWT_SECRET: string-acak-panjang-1      # min. 32 karakter acak
+JWT_REFRESH_SECRET: string-acak-2      # min. 32 karakter acak, berbeda dari atas
+DATA_ENC_KEY: 0f1e2d3c...              # 64 karakter hex — generate di bawah
+POSTGRES_PASSWORD: password-database-anda  # HARUS SAMA dengan DB_PASS
+```
+
+**Generate `DATA_ENC_KEY` (pilih salah satu):**
+- Linux/Mac: `openssl rand -hex 32`
+- Windows PowerShell: `[System.BitConverter]::ToString([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).Replace('-','').ToLower()`
+- Online: [codebeautify.org/generate-random-string](https://codebeautify.org/generate-random-string) → pilih Hex, 64 karakter
+
+### Langkah 3 — Build dan Jalankan
+
+```cmd
+docker compose -f docker-compose.local.yml up -d --build
+```
+
+> Proses build pertama membutuhkan waktu **5–15 menit** (mengunduh Node.js, mengompilasi frontend+backend).  
+> Build berikutnya lebih cepat karena Docker menyimpan cache layer.
+
+### Langkah 4 — Buka Aplikasi
+
+Browser → `http://localhost:3000`
+
+Login: **admin@rtrw.local** / **admin12345**
+
+### Update ke Versi Terbaru (setelah git pull)
+
+```cmd
+git pull
+docker compose -f docker-compose.local.yml up -d --build
+```
+
+---
+
+## D. Alternatif — Login GHCR (tanpa set Public)
+
+Jika tidak mau build dari source tapi package tetap private, bisa login ke GHCR dengan token GitHub.
+
+### Langkah 1 — Buat GitHub Personal Access Token
+
+1. GitHub → **Settings** → **Developer settings** → **Personal access tokens** → **Tokens (classic)**
+2. Klik **Generate new token** → beri nama mis. "docker-pull"
+3. Centang scope: **`read:packages`** saja
+4. Klik **Generate** → **salin token** (hanya tampil sekali)
+
+### Langkah 2 — Login Docker ke GHCR
+
+**Windows (PowerShell):**
+```powershell
+echo "TOKEN_ANDA" | docker login ghcr.io -u USERNAME_GITHUB --password-stdin
+```
+
+**Linux/Mac:**
+```bash
+echo "TOKEN_ANDA" | docker login ghcr.io -u USERNAME_GITHUB --password-stdin
+```
+
+Ganti `TOKEN_ANDA` dengan token dari langkah 1, dan `USERNAME_GITHUB` dengan username GitHub Anda (`mentionabbe-wq`).
+
+### Langkah 3 — Jalankan dengan Compose Biasa
+
+```cmd
+docker compose -f docker-compose.local.yml up -d
+```
+
+> Setelah login, gunakan file `docker-compose.local.yml` tapi **hapus bagian `build:`** dan ganti dengan:
+> ```yaml
+> image: ghcr.io/mentionabbe-wq/rtrw-billing:latest
+> ```
+
+---
+
+## A. Instalasi di CasaOS (via GHCR)
 
 ### Prasyarat
 - CasaOS sudah terpasang ([casaos.io](https://casaos.io))

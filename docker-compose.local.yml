@@ -1,0 +1,60 @@
+name: rtrw-billing
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rtrw-billing-app
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      DB_HOST: rtrw-billing-postgres
+      DB_PORT: "5432"
+      DB_USER: rtrw
+      DB_PASS: password-database-anda        # <-- GANTI
+      DB_NAME: rtrw_billing
+      REDIS_HOST: rtrw-billing-redis
+      REDIS_PORT: "6379"
+      JWT_SECRET: string-acak-panjang-1      # <-- GANTI
+      JWT_REFRESH_SECRET: string-acak-2      # <-- GANTI
+      JWT_EXPIRES: 15m
+      JWT_REFRESH_EXPIRES: 7d
+      DATA_ENC_KEY: 0f1e2d3c4b5a69788796a5b4c3d2e1f00112233445566778899aabbccddeeff00  # <-- GANTI (64 hex)
+      SEED_ON_START: "true"
+      GENIEACS_URL: ""
+      GENIEACS_USERNAME: ""
+      GENIEACS_PASSWORD: ""
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - rtrw-net
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: rtrw-billing-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rtrw
+      POSTGRES_PASSWORD: password-database-anda   # <-- sama dengan DB_PASS di atas
+      POSTGRES_DB: rtrw_billing
+    volumes:
+      - rtrw-postgres-data:/var/lib/postgresql/data
+    networks:
+      - rtrw-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: rtrw-billing-redis
+    restart: unless-stopped
+    networks:
+      - rtrw-net
+
+volumes:
+  rtrw-postgres-data:
+
+networks:
+  rtrw-net:
+    driver: bridge
