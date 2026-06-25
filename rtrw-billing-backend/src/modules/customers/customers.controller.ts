@@ -36,6 +36,13 @@ export class CustomersController {
     return this.service.update(id, dto);
   }
 
+  /** Sinkron pelanggan dari PPP secret Mikrotik (admin). Definisikan SEBELUM :id. */
+  @Post('sync-mikrotik')
+  @Roles('admin')
+  syncMikrotik() {
+    return this.service.syncFromMikrotik();
+  }
+
   /** Hapus semua data demo/pelanggan (admin). Definisikan SEBELUM :id. */
   @Post('clear-demo')
   @Roles('admin')

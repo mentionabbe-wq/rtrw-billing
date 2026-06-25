@@ -2,7 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { CryptoService } from '@common/crypto/crypto.service';
-import { Customer } from '@database/entities';
+import { Customer, Subscription, ServicePackage, Router } from '@database/entities';
+import { MikrotikService } from '@modules/mikrotik/mikrotik.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 
@@ -10,9 +11,82 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 export class CustomersService {
   constructor(
     @InjectRepository(Customer) private readonly repo: Repository<Customer>,
+    @InjectRepository(Subscription) private readonly subs: Repository<Subscription>,
+    @InjectRepository(ServicePackage) private readonly packages: Repository<ServicePackage>,
+    @InjectRepository(Router) private readonly routers: Repository<Router>,
     private readonly crypto: CryptoService,
+    private readonly mikrotik: MikrotikService,
     private readonly dataSource: DataSource,
   ) {}
+
+  /**
+   * SINKRON dari Mikrotik: tarik semua PPP secret di tiap router (online) lalu
+   * buat pelanggan + langganan untuk user PPPoE yang BELUM ada di app.
+   * - nama pelanggan diambil dari comment secret (fallback = nama user)
+   * - paket dicocokkan dari profile secret → ServicePackage.pppoeProfile
+   * - status disable di Mikrotik → suspended
+   * Idempotent: pppoeUser yang sudah ada dilewati.
+   */
+  async syncFromMikrotik() {
+    const routers = await this.routers.find();
+    const allPackages = await this.packages.find();
+    const pkgByProfile = new Map(allPackages.filter((p) => p.pppoeProfile).map((p) => [p.pppoeProfile, p]));
+
+    const existing = new Set(
+      (await this.subs.find({ select: { id: true, pppoeUser: true } }))
+        .map((s) => s.pppoeUser).filter(Boolean),
+    );
+
+    let nextNo = (await this.repo.count()) + 1;
+    let created = 0;
+    let skipped = 0;
+    const perRouter: Array<{ router: string; created: number; skipped: number; error?: string }> = [];
+    const today = new Date();
+
+    for (const r of routers) {
+      if (r.status === 'offline') { perRouter.push({ router: r.name, created: 0, skipped: 0, error: 'offline' }); continue; }
+      let secrets: any[] = [];
+      try {
+        secrets = await this.mikrotik.listSecrets(r);
+      } catch (e) {
+        perRouter.push({ router: r.name, created: 0, skipped: 0, error: e?.message ?? 'gagal konek' });
+        continue;
+      }
+
+      let rc = 0, rs = 0;
+      for (const sec of secrets) {
+        const pppoeUser: string = sec.name;
+        if (!pppoeUser || existing.has(pppoeUser)) { rs++; skipped++; continue; }
+        existing.add(pppoeUser);
+
+        const customer = await this.repo.save(this.repo.create({
+          customerNo: 'CST' + String(nextNo++).padStart(6, '0'),
+          fullName: (sec.comment && String(sec.comment).trim()) || pppoeUser,
+          phoneEnc: this.crypto.encrypt('')!, // phone wajib, kosong dulu
+          status: sec.disabled ? 'suspended' : 'active',
+        }));
+
+        const pkg = pkgByProfile.get(sec.profile);
+        const cycle = pkg?.billingCycle || 30;
+        const due = new Date(today);
+        due.setDate(due.getDate() + cycle);
+
+        await this.subs.save(this.subs.create({
+          customer,
+          package: pkg ?? null,
+          router: r,
+          connType: 'pppoe',
+          pppoeUser,
+          status: sec.disabled ? 'suspended' : 'active',
+          dueDate: due.toISOString().slice(0, 10),
+        }));
+        rc++; created++;
+      }
+      perRouter.push({ router: r.name, created: rc, skipped: rs });
+    }
+
+    return { created, skipped, routers: perRouter };
+  }
 
   async create(dto: CreateCustomerDto): Promise<{ id: string; customerNo: string }> {
     const customerNo = await this.nextCustomerNo();

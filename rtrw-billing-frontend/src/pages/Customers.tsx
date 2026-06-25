@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Loader2, X, Pencil, Trash2, Eraser } from 'lucide-react';
+import { Plus, Loader2, X, Pencil, Trash2, RefreshCw } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCan } from '@/lib/rbac';
 
@@ -48,10 +48,17 @@ export default function Customers() {
     onSuccess: invalidate,
     onError: () => alert('Gagal menghapus pelanggan.'),
   });
-  const clearDemo = useMutation({
-    mutationFn: () => api.post('/customers/clear-demo'),
-    onSuccess: () => { invalidate(); alert('Data demo dibersihkan. Set SEED_ON_START=false agar tak ter-isi ulang.'); },
-    onError: () => alert('Gagal membersihkan data demo.'),
+  const sync = useMutation({
+    mutationFn: () => api.post('/customers/sync-mikrotik'),
+    onSuccess: (res: any) => {
+      invalidate();
+      const d = res?.data ?? {};
+      const detail = (d.routers ?? [])
+        .map((r: any) => `• ${r.router}: +${r.created} baru, ${r.skipped} dilewati${r.error ? ` (${r.error})` : ''}`)
+        .join('\n');
+      alert(`Sinkron dari Mikrotik selesai.\nTotal: ${d.created ?? 0} pelanggan baru, ${d.skipped ?? 0} dilewati.\n\n${detail}`);
+    },
+    onError: (e: any) => alert(`Gagal sinkron: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
   });
 
   const createMut = useMutation({
@@ -94,15 +101,12 @@ export default function Customers() {
         <div className="flex gap-2">
           {canAdmin && (
             <button
-              className="btn-ghost text-rose-600"
-              disabled={clearDemo.isPending}
-              onClick={() => {
-                if (confirm('Hapus SEMUA data pelanggan/langganan/ONU/tagihan (data demo)?\nPaket, router, dan OLT tidak dihapus. Tindakan ini permanen.'))
-                  clearDemo.mutate();
-              }}
-              title="Bersihkan semua data demo"
+              className="btn-ghost text-brand-600"
+              disabled={sync.isPending}
+              onClick={() => sync.mutate()}
+              title="Tarik pelanggan dari PPP secret Mikrotik"
             >
-              {clearDemo.isPending ? <Loader2 className="animate-spin" size={16} /> : <Eraser size={16} />} Hapus Data Demo
+              {sync.isPending ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />} Sinkron
             </button>
           )}
           {canWrite && (
