@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
-import { Subscription, ServicePackage, Router } from '@database/entities';
+import { Subscription, ServicePackage, Router, Customer } from '@database/entities';
+import { CryptoService } from '@common/crypto/crypto.service';
 import { MikrotikService } from '@modules/mikrotik/mikrotik.service';
 import {
   MIKROTIK_QUEUE, MikrotikJobData, DEFAULT_JOB_OPTS,
@@ -15,9 +16,42 @@ export class SubscriptionsService {
     @InjectRepository(Subscription) private readonly subs: Repository<Subscription>,
     @InjectRepository(ServicePackage) private readonly packages: Repository<ServicePackage>,
     @InjectRepository(Router) private readonly routers: Repository<Router>,
+    @InjectRepository(Customer) private readonly customers: Repository<Customer>,
     @InjectQueue(MIKROTIK_QUEUE) private readonly queue: Queue<MikrotikJobData>,
+    private readonly crypto: CryptoService,
     private readonly mikrotik: MikrotikService,
   ) {}
+
+  /** Buat langganan untuk pelanggan yang sudah ada (dari menu Langganan). */
+  async create(dto: {
+    customerId: string; pppoeUser?: string; pppoePass?: string;
+    packageId?: string; routerId?: string;
+  }) {
+    const customer = await this.customers.findOne({ where: { id: dto.customerId } });
+    if (!customer) throw new NotFoundException('Pelanggan tidak ditemukan');
+    if (!dto.pppoeUser || !dto.pppoeUser.trim()) throw new BadRequestException('User PPPoE wajib diisi');
+
+    const dup = await this.subs.findOne({ where: { pppoeUser: dto.pppoeUser.trim() } });
+    if (dup) throw new BadRequestException(`User PPPoE "${dto.pppoeUser.trim()}" sudah dipakai`);
+
+    const pkg = dto.packageId ? await this.packages.findOne({ where: { id: dto.packageId } }) : null;
+    const router = dto.routerId ? await this.routers.findOne({ where: { id: dto.routerId } }) : null;
+    const cycle = pkg?.billingCycle || 30;
+    const due = new Date();
+    due.setDate(due.getDate() + cycle);
+
+    const sub = await this.subs.save(this.subs.create({
+      customer,
+      package: pkg ?? null,
+      router: router ?? null,
+      connType: 'pppoe',
+      pppoeUser: dto.pppoeUser.trim(),
+      pppoePassEnc: dto.pppoePass ? this.crypto.encrypt(dto.pppoePass) : null,
+      status: 'active',
+      dueDate: due.toISOString().slice(0, 10),
+    }));
+    return { id: sub.id };
+  }
 
   /**
    * PPPoE yang sedang aktif (live dari Mikrotik) digabung data langganan →

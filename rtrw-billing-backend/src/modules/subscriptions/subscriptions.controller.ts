@@ -23,6 +23,16 @@ export class SubscriptionsController {
     return this.service.pppoeActive();
   }
 
+  /** Buat langganan baru untuk pelanggan yang sudah ada. */
+  @Post()
+  @Roles('admin', 'operator')
+  create(@Body() dto: {
+    customerId: string; pppoeUser?: string; pppoePass?: string;
+    packageId?: string; routerId?: string;
+  }) {
+    return this.service.create(dto);
+  }
+
   @Patch(':id/package')
   @Roles('admin', 'operator')
   changePackage(@Param('id') id: string, @Body('packageId') packageId: string) {
