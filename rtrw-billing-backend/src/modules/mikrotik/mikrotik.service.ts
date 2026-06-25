@@ -127,6 +127,36 @@ export class MikrotikService {
     }
   }
 
+  /** Daftar interface/port di router (untuk grafik trafik). */
+  async listInterfaces(router: Router): Promise<any[]> {
+    const conn = await this.connect(router);
+    try {
+      const rows = await conn.write('/interface/print');
+      return rows.map((r) => ({
+        name: r.name,
+        type: r.type,
+        running: r.running === 'true' || r.running === true,
+      }));
+    } finally {
+      conn.close();
+    }
+  }
+
+  /** Trafik sesaat sebuah interface (bits/detik) via monitor-traffic once. */
+  async monitorTraffic(router: Router, iface: string): Promise<{ rxbps: number; txbps: number }> {
+    const conn = await this.connect(router);
+    try {
+      const rows = await conn.write('/interface/monitor-traffic', [`=interface=${iface}`, '=once=']);
+      const r = rows[0] ?? {};
+      return {
+        rxbps: Number(r['rx-bits-per-second'] ?? 0),
+        txbps: Number(r['tx-bits-per-second'] ?? 0),
+      };
+    } finally {
+      conn.close();
+    }
+  }
+
   /** Daftar IP pool di router (untuk dropdown pilih pool di paket). */
   async listPools(router: Router): Promise<any[]> {
     const conn = await this.connect(router);

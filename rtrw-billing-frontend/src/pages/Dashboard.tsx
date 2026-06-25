@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, AreaChart, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import { Users, Wifi, Radio, Receipt } from 'lucide-react';
+import { Users, Wifi, Radio, Receipt, Activity } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useCan } from '@/lib/rbac';
 import { getMonitoringSocket, OnuStatusEvent } from '@/lib/socket';
+
+interface RouterLite { id: string; name: string }
+interface IfaceLite { name: string; type: string; running: boolean }
 
 interface Stats {
   totalCustomers: number;
@@ -66,22 +70,8 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="card p-5 lg:col-span-2">
-          <h2 className="mb-4 font-medium">Trafik Agregat (Mbps)</h2>
-          <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={data?.trafficSeries ?? []}>
-              <defs>
-                <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#6366f1" stopOpacity={0.4} />
-                  <stop offset="100%" stopColor="#6366f1" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="t" fontSize={12} stroke="#94a3b8" />
-              <YAxis fontSize={12} stroke="#94a3b8" />
-              <Tooltip />
-              <Area type="monotone" dataKey="mbps" stroke="#4f46e5" fill="url(#g)" />
-            </AreaChart>
-          </ResponsiveContainer>
+        <div className="lg:col-span-2">
+          <MikrotikTrafficChart />
         </div>
 
         <div className="card p-5">
@@ -105,6 +95,87 @@ export default function Dashboard() {
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ---------------- Trafik live per-port Mikrotik ---------------- */
+function MikrotikTrafficChart() {
+  const canAdmin = useCan('settings.manage');
+  const [routerId, setRouterId] = useState('');
+  const [iface, setIface] = useState('');
+  const [series, setSeries] = useState<{ t: string; rx: number; tx: number }[]>([]);
+
+  const { data: routers } = useQuery<RouterLite[]>({
+    queryKey: ['routers'],
+    queryFn: async () => (await api.get('/routers')).data,
+    enabled: canAdmin,
+  });
+  const { data: ifaces } = useQuery<IfaceLite[]>({
+    queryKey: ['mt-ifaces', routerId],
+    queryFn: async () => (await api.get(`/routers/${routerId}/interfaces`)).data,
+    enabled: !!routerId,
+  });
+  const { data: tick } = useQuery<{ rxbps: number; txbps: number }>({
+    queryKey: ['mt-traffic', routerId, iface],
+    queryFn: async () => (await api.get(`/routers/${routerId}/traffic?iface=${encodeURIComponent(iface)}`)).data,
+    enabled: !!routerId && !!iface,
+    refetchInterval: 3000,
+  });
+
+  useEffect(() => { setSeries([]); }, [routerId, iface]);
+  useEffect(() => {
+    if (!tick) return;
+    const t = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setSeries((prev) => [...prev, {
+      t,
+      rx: +(tick.rxbps / 1e6).toFixed(2),
+      tx: +(tick.txbps / 1e6).toFixed(2),
+    }].slice(-20));
+  }, [tick]);
+
+  return (
+    <div className="card p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 font-medium"><Activity size={16} className="text-brand-600" /> Trafik Port Mikrotik (Mbps)</h2>
+        <div className="flex gap-2">
+          <select className="input py-1" value={routerId} onChange={(e) => { setRouterId(e.target.value); setIface(''); }}>
+            <option value="">Pilih router…</option>
+            {routers?.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+          <select className="input py-1" value={iface} onChange={(e) => setIface(e.target.value)} disabled={!routerId}>
+            <option value="">Pilih port…</option>
+            {ifaces?.map((i) => <option key={i.name} value={i.name}>{i.name}{i.running ? '' : ' (down)'}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {!canAdmin ? (
+        <p className="py-16 text-center text-sm text-slate-400">Grafik trafik hanya untuk admin.</p>
+      ) : !iface ? (
+        <p className="py-16 text-center text-sm text-slate-400">Pilih router & port untuk melihat trafik live (update tiap 3 detik).</p>
+      ) : (
+        <ResponsiveContainer width="100%" height={260}>
+          <AreaChart data={series}>
+            <defs>
+              <linearGradient id="gRx" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#2563eb" stopOpacity={0.35} />
+                <stop offset="100%" stopColor="#2563eb" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="gTx" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.35} />
+                <stop offset="100%" stopColor="#38bdf8" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <XAxis dataKey="t" fontSize={11} stroke="#94a3b8" />
+            <YAxis fontSize={11} stroke="#94a3b8" unit=" Mb" />
+            <Tooltip />
+            <Legend />
+            <Area type="monotone" name="Download (rx)" dataKey="rx" stroke="#2563eb" fill="url(#gRx)" strokeWidth={2} isAnimationActive={false} />
+            <Area type="monotone" name="Upload (tx)" dataKey="tx" stroke="#38bdf8" fill="url(#gTx)" strokeWidth={2} isAnimationActive={false} />
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 }

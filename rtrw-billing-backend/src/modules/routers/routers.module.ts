@@ -1,6 +1,6 @@
 import {
   Body, Controller, Delete, Get, Injectable, Module, NotFoundException,
-  Param, Patch, Post, UseGuards,
+  Param, Patch, Post, Query, UseGuards,
 } from '@nestjs/common';
 import { TypeOrmModule, InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -100,6 +100,17 @@ export class RoutersService {
     return this.mikrotik.listPools(await this.get(id));
   }
 
+  /** Daftar interface/port (untuk grafik trafik). */
+  async interfaces(id: string) {
+    return this.mikrotik.listInterfaces(await this.get(id));
+  }
+
+  /** Trafik sesaat interface (bits/detik). */
+  async traffic(id: string, iface: string) {
+    if (!iface) throw new NotFoundException('Parameter iface wajib');
+    return this.mikrotik.monitorTraffic(await this.get(id), iface);
+  }
+
   /** Terapkan pool ke PPP profile di Mikrotik (remote-address = pool). */
   async setProfilePool(id: string, profile: string, pool: string) {
     if (!profile || !pool) throw new NotFoundException('profile & pool wajib diisi');
@@ -131,6 +142,8 @@ export class RoutersController {
   @Get(':id/profiles') profiles(@Param('id') id: string) { return this.service.profiles(id); }
   @Get(':id/secrets') secrets(@Param('id') id: string) { return this.service.secrets(id); }
   @Get(':id/pools') pools(@Param('id') id: string) { return this.service.pools(id); }
+  @Get(':id/interfaces') interfaces(@Param('id') id: string) { return this.service.interfaces(id); }
+  @Get(':id/traffic') traffic(@Param('id') id: string, @Query('iface') iface: string) { return this.service.traffic(id, iface); }
   @Post(':id/profile-pool') profilePool(
     @Param('id') id: string,
     @Body('profile') profile: string,

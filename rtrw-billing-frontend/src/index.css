@@ -4,13 +4,16 @@
 
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-800 antialiased;
+    @apply text-slate-800 antialiased;
+    background: linear-gradient(160deg, #eff6ff 0%, #e0f2fe 45%, #f0f9ff 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
   }
 }
 
 @layer components {
   .card {
-    @apply rounded-xl border border-slate-200 bg-white shadow-sm;
+    @apply rounded-xl border border-brand-100 bg-white/90 shadow-sm backdrop-blur-sm;
   }
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition;

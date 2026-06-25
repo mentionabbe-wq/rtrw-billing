@@ -37,13 +37,13 @@ export function Layout() {
       {/* Sidebar */}
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 z-30 w-64 transform border-r border-slate-200 bg-white transition-transform lg:static lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-30 w-64 transform border-r border-brand-100 bg-white/80 backdrop-blur transition-transform lg:static lg:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        <div className="flex h-16 items-center gap-2 border-b border-slate-200 px-5">
+        <div className="flex h-16 items-center gap-2 border-b border-brand-100 bg-gradient-to-r from-brand-50 to-sky-50 px-5">
           <Wifi className="text-brand-600" size={22} />
-          <span className="font-semibold">RT/RW Net</span>
+          <span className="font-semibold text-brand-700">RT/RW Net</span>
         </div>
         <nav className="space-y-1 p-3">
           {nav.filter((n) => !n.cap || can(user?.role, n.cap)).map((n) => (
@@ -72,7 +72,7 @@ export function Layout() {
 
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 lg:px-6">
+        <header className="flex h-16 items-center justify-between border-b border-brand-100 bg-white/70 px-4 backdrop-blur lg:px-6">
           <button className="btn-ghost lg:hidden" onClick={() => setOpen(true)}>
             <Menu size={20} />
           </button>
