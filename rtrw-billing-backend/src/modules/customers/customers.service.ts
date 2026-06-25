@@ -97,7 +97,7 @@ export class CustomersService {
    }
   }
 
-  async create(dto: CreateCustomerDto): Promise<{ id: string; customerNo: string }> {
+  async create(dto: CreateCustomerDto): Promise<{ id: string; customerNo: string; subscriptionCreated: boolean }> {
     const customerNo = await this.nextCustomerNo();
     const entity = this.repo.create({
       customerNo,
@@ -109,7 +109,31 @@ export class CustomersService {
       geoLng: dto.geoLng,
     });
     const saved = await this.repo.save(entity);
-    return { id: saved.id, customerNo: saved.customerNo };
+
+    // Bila user PPPoE diisi → buat langganan sekaligus, agar langsung tampil
+    // di menu Langganan (pelanggan ≠ langganan: ini menyatukan keduanya).
+    let subscriptionCreated = false;
+    if (dto.pppoeUser && dto.pppoeUser.trim()) {
+      const pkg = dto.packageId ? await this.packages.findOne({ where: { id: dto.packageId } }) : null;
+      const router = dto.routerId ? await this.routers.findOne({ where: { id: dto.routerId } }) : null;
+      const cycle = pkg?.billingCycle || 30;
+      const due = new Date();
+      due.setDate(due.getDate() + cycle);
+
+      await this.subs.save(this.subs.create({
+        customer: saved,
+        package: pkg ?? null,
+        router: router ?? null,
+        connType: 'pppoe',
+        pppoeUser: dto.pppoeUser.trim(),
+        pppoePassEnc: dto.pppoePass ? this.crypto.encrypt(dto.pppoePass) : null,
+        status: 'active',
+        dueDate: due.toISOString().slice(0, 10),
+      }));
+      subscriptionCreated = true;
+    }
+
+    return { id: saved.id, customerNo: saved.customerNo, subscriptionCreated };
   }
 
   async update(id: string, dto: UpdateCustomerDto) {

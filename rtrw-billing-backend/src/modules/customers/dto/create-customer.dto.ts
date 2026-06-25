@@ -23,4 +23,11 @@ export class CreateCustomerDto {
   @IsOptional()
   @IsString()
   geoLng?: string;
+
+  // ---- Langganan opsional (kalau diisi, langsung dibuatkan langganan) ----
+  /** Bila diisi, dibuat langganan PPPoE sekaligus. */
+  @IsOptional() @IsString() pppoeUser?: string;
+  @IsOptional() @IsString() pppoePass?: string;
+  @IsOptional() @IsString() packageId?: string;
+  @IsOptional() @IsString() routerId?: string;
 }
