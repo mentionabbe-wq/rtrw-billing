@@ -26,6 +26,8 @@ services:
     depends_on:
       - postgres
       - redis
+    networks:
+      - rtrw-net
     x-casaos:
       ports:
         - container: "3000"
@@ -42,11 +44,19 @@ services:
       POSTGRES_DB: rtrw_billing
     volumes:
       - /DATA/AppData/rtrw-billing/postgres:/var/lib/postgresql/data
+    networks:
+      - rtrw-net
 
   redis:
     image: redis:7-alpine
     container_name: rtrw-billing-redis
     restart: unless-stopped
+    networks:
+      - rtrw-net
+
+networks:
+  rtrw-net:
+    driver: bridge
 
 x-casaos:
   architectures:
