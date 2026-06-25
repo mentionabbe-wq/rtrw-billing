@@ -71,10 +71,13 @@ export class PackagesService {
         if (!name || SKIP.has(name) || existing.has(name)) { rs++; skipped++; continue; }
         existing.add(name);
         try {
+          // rate-limit profil bisa "10M/10M 20M/20M 5M/5M 8 ..." (burst) →
+          // ambil token pertama (rx/tx dasar), cocok utk max-limit & display.
+          const baseRate = String(prof.rateLimit || '').trim().split(/\s+/)[0] || '0/0';
           await this.repo.save(this.repo.create({
             name,
             price: '0',
-            rateLimit: prof.rateLimit || '0/0',
+            rateLimit: baseRate,
             pppoeProfile: name,
             ipPool: prof.remoteAddress || null,
             billingCycle: 30,
