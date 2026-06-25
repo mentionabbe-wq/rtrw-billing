@@ -14,13 +14,10 @@ export class MikrotikService {
 
   constructor(private readonly crypto: CryptoService) {}
 
-  private async connect(router: Router): Promise<RouterOSAPI> {
-    // Port 8728 = API plaintext, 8729 = API-SSL. RouterOS API-SSL biasanya pakai
-    // sertifikat self-signed, jadi TLS tak boleh menolak cert tak dikenal
-    // (rejectUnauthorized:false) — kalau true, handshake gagal & tak pernah konek.
-    const port = router.apiPort || 8729;
-    const useTls = port !== 8728;
-    const conn = new RouterOSAPI({
+  private buildConn(router: Router, port: number, useTls: boolean): RouterOSAPI {
+    // API-SSL (8729) umumnya sertifikat self-signed → rejectUnauthorized:false,
+    // kalau true handshake gagal. Port 8728 = API plaintext (yang dipakai Mikhmon).
+    return new RouterOSAPI({
       host: router.host,
       user: router.apiUsername,
       password: this.crypto.decrypt(router.apiSecretEnc),
@@ -28,8 +25,30 @@ export class MikrotikService {
       tls: useTls ? { rejectUnauthorized: false } : undefined,
       timeout: 8,
     });
-    await conn.connect();
-    return conn;
+  }
+
+  private async connect(router: Router): Promise<RouterOSAPI> {
+    const port = router.apiPort || 8728;
+    const useTls = port !== 8728;
+    try {
+      const conn = this.buildConn(router, port, useTls);
+      await conn.connect();
+      return conn;
+    } catch (err) {
+      // Fallback: coba transport lain di port standar — mis. user set 8729 (SSL)
+      // tapi router hanya mengaktifkan service "api" plain 8728 (kasus Mikhmon),
+      // atau sebaliknya. Hanya saat percobaan pertama gagal.
+      const altPort = port === 8728 ? 8729 : 8728;
+      const altTls = altPort !== 8728;
+      try {
+        const conn = this.buildConn(router, altPort, altTls);
+        await conn.connect();
+        this.logger.warn(`Konek ${router.host}:${port} gagal, berhasil lewat :${altPort}`);
+        return conn;
+      } catch {
+        throw err; // lempar error percobaan pertama (lebih relevan ke setting user)
+      }
+    }
   }
 
   // ----------------------- READ-BACK (Mikrotik -> app) -----------------------

@@ -47,7 +47,7 @@ export class RoutersService {
     const r = this.repo.create({
       name: dto.name,
       host: dto.host,
-      apiPort: dto.apiPort ?? 8729,
+      apiPort: dto.apiPort ?? 8728,
       apiUsername: dto.apiUsername,
       apiSecretEnc: this.crypto.encrypt(dto.apiSecret ?? '')!,
     });

@@ -65,7 +65,13 @@ function RoutersPanel() {
   });
   const test = useMutation({
     mutationFn: (id: string) => api.post(`/routers/${id}/test`),
-    onSuccess: invalidate,
+    onSuccess: (res: any) => {
+      invalidate();
+      const d = res?.data;
+      alert(d?.ok
+        ? `Mikrotik online ✓\nIdentity: ${d.identity ?? '-'}\nRouterOS: ${d.version ?? '-'} (${d.board ?? '-'})`
+        : `Gagal konek Mikrotik:\n${d?.error ?? 'unknown'}\n\nCek: port API (coba 8728 spt Mikhmon), service api aktif, user/password, & firewall.`);
+    },
   });
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
@@ -126,7 +132,7 @@ function RoutersPanel() {
           <form onSubmit={onSubmit} className="space-y-3">
             <input name="name" className="input" placeholder="Nama" defaultValue={form.name} required />
             <input name="host" className="input" placeholder="Host / IP (mis. 192.168.88.1)" defaultValue={form.host} required />
-            <input name="apiPort" type="number" className="input" placeholder="Port API-SSL" defaultValue={form.apiPort ?? 8729} />
+            <input name="apiPort" type="number" className="input" placeholder="Port API (8728 plain spt Mikhmon / 8729 SSL)" defaultValue={form.apiPort ?? 8728} />
             <input name="apiUsername" className="input" placeholder="User API (least-privilege)" defaultValue={form.apiUsername} required />
             <input name="apiSecret" type="password" className="input" placeholder={form.id ? 'Password API (kosongkan = tetap)' : 'Password API'} />
             {save.isError && <p className="text-sm text-red-600">Gagal menyimpan.</p>}
