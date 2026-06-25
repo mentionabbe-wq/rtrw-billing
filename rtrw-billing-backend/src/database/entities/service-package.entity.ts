@@ -18,6 +18,10 @@ export class ServicePackage {
   @Column({ name: 'pppoe_profile', nullable: true })
   pppoeProfile: string;
 
+  /** Nama IP pool Mikrotik untuk paket ini (opsional). */
+  @Column({ name: 'ip_pool', nullable: true })
+  ipPool: string;
+
   @Column({ name: 'billing_cycle', type: 'smallint', default: 30 })
   billingCycle: number;
 

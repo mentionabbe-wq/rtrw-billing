@@ -79,9 +79,45 @@ export class BillingService {
     return { created, skipped };
   }
 
-  /** List recent invoices for the dashboard. */
-  listInvoices() {
-    return this.invoices.find({ order: { id: 'DESC' }, take: 200 });
+  /** List recent invoices + nama pelanggan & status langganan (utk tombol Bayar). */
+  async listInvoices() {
+    const rows = await this.invoices.find({
+      order: { id: 'DESC' },
+      take: 200,
+      relations: { subscription: { customer: true } },
+    });
+    return rows.map((i) => ({
+      id: i.id,
+      invoiceNo: i.invoiceNo,
+      amount: i.amount,
+      dueDate: i.dueDate,
+      status: i.status,
+      periodStart: i.periodStart,
+      customerName: i.subscription?.customer?.fullName ?? null,
+      customerNo: i.subscription?.customer?.customerNo ?? null,
+      pppoeUser: i.subscription?.pppoeUser ?? null,
+      subStatus: i.subscription?.status ?? null,
+    }));
+  }
+
+  /**
+   * Pembayaran MANUAL (tunai/transfer) oleh admin/finance dari UI.
+   * Memakai jalur settlePayment yang sama → tandai lunas, perpanjang jatuh
+   * tempo, dan otomatis aktifkan kembali pelanggan via Mikrotik.
+   */
+  async payManual(invoiceId: string, method = 'cash') {
+    const inv = await this.invoices.findOne({ where: { id: invoiceId } });
+    if (!inv) throw new NotFoundException('Invoice not found');
+    if (inv.status === 'paid') return { id: invoiceId, paid: true, already: true };
+    await this.settlePayment({
+      invoiceNo: inv.invoiceNo,
+      gateway: 'manual',
+      gatewayRef: 'MANUAL-' + Date.now().toString(36).toUpperCase(),
+      amount: inv.amount,
+      method,
+      rawPayload: { manual: true },
+    });
+    return { id: invoiceId, paid: true };
   }
 
   /** Generate a monthly invoice for an active subscription. */

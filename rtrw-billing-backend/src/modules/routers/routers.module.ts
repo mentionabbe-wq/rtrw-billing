@@ -95,6 +95,18 @@ export class RoutersService {
     return this.mikrotik.listSecrets(await this.get(id));
   }
 
+  /** Daftar IP pool di router (untuk pilihan pool di paket). */
+  async pools(id: string) {
+    return this.mikrotik.listPools(await this.get(id));
+  }
+
+  /** Terapkan pool ke PPP profile di Mikrotik (remote-address = pool). */
+  async setProfilePool(id: string, profile: string, pool: string) {
+    if (!profile || !pool) throw new NotFoundException('profile & pool wajib diisi');
+    await this.mikrotik.setProfilePool(await this.get(id), profile, pool);
+    return { id, profile, pool, ok: true };
+  }
+
   private async get(id: string) {
     const r = await this.repo.findOne({ where: { id } });
     if (!r) throw new NotFoundException('Router not found');
@@ -118,6 +130,12 @@ export class RoutersController {
   @Get(':id/active') active(@Param('id') id: string) { return this.service.active(id); }
   @Get(':id/profiles') profiles(@Param('id') id: string) { return this.service.profiles(id); }
   @Get(':id/secrets') secrets(@Param('id') id: string) { return this.service.secrets(id); }
+  @Get(':id/pools') pools(@Param('id') id: string) { return this.service.pools(id); }
+  @Post(':id/profile-pool') profilePool(
+    @Param('id') id: string,
+    @Body('profile') profile: string,
+    @Body('pool') pool: string,
+  ) { return this.service.setProfilePool(id, profile, pool); }
 }
 
 @Module({

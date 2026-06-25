@@ -108,6 +108,35 @@ export class MikrotikService {
     }
   }
 
+  /** Daftar IP pool di router (untuk dropdown pilih pool di paket). */
+  async listPools(router: Router): Promise<any[]> {
+    const conn = await this.connect(router);
+    try {
+      const rows = await conn.write('/ip/pool/print');
+      return rows.map((r) => ({ name: r.name, ranges: r.ranges }));
+    } finally {
+      conn.close();
+    }
+  }
+
+  /**
+   * Tetapkan IP pool sebuah paket ke PPP profile (remote-address = pool).
+   * Inilah cara Mikrotik memberi IP pelanggan dari pool tertentu. Idempotent.
+   */
+  async setProfilePool(router: Router, profileName: string, poolName: string): Promise<void> {
+    const conn = await this.connect(router);
+    try {
+      const profiles = await conn.write('/ppp/profile/print', [`?name=${profileName}`]);
+      if (!profiles.length) throw new Error(`PPP profile "${profileName}" tidak ditemukan di router`);
+      await conn.write('/ppp/profile/set', [
+        `=.id=${profiles[0]['.id']}`,
+        `=remote-address=${poolName}`,
+      ]);
+    } finally {
+      conn.close();
+    }
+  }
+
   /** Disable PPPoE secret, drop active session, add to "isolir" address-list. */
   async suspend(router: Router, sub: Subscription): Promise<void> {
     const conn = await this.connect(router);

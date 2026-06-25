@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pause, Play, Loader2 } from 'lucide-react';
+import { Pause, Play, Loader2, Save } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCan } from '@/lib/rbac';
 
@@ -38,10 +39,17 @@ export default function Subscriptions() {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['subscriptions'] });
 
+  // Pilihan paket per-baris (belum disimpan sampai tombol Save diklik).
+  const [pkgSel, setPkgSel] = useState<Record<string, string>>({});
+
   const changePkg = useMutation({
     mutationFn: ({ id, packageId }: { id: string; packageId: string }) =>
       api.patch(`/subscriptions/${id}/package`, { packageId }),
-    onSuccess: invalidate,
+    onSuccess: (_res, vars) => {
+      setPkgSel((p) => { const n = { ...p }; delete n[vars.id]; return n; });
+      invalidate();
+    },
+    onError: () => alert('Gagal menyetel paket ke Mikrotik.'),
   });
   const access = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'suspend' | 'activate' }) =>
@@ -53,8 +61,8 @@ export default function Subscriptions() {
     <div className="space-y-5">
       <h1 className="text-xl font-semibold">Langganan</h1>
       <p className="text-sm text-slate-500">
-        Ubah paket akan otomatis menyetel ulang bandwidth di Mikrotik (job <code>set_bandwidth</code>).
-        Suspend/aktifkan memicu kontrol PPPoE secara remote.
+        Pilih paket baru lalu klik <strong>Save</strong> untuk menerapkan ke Mikrotik
+        (job <code>set_bandwidth</code> → set profil & queue). Suspend/aktifkan memicu kontrol PPPoE remote.
       </p>
 
       <div className="card overflow-hidden">
@@ -79,16 +87,30 @@ export default function Subscriptions() {
                   </td>
                   <td className="px-4 py-3 font-mono text-xs">{s.pppoeUser}</td>
                   <td className="px-4 py-3">
-                    <select
-                      className="input py-1"
-                      defaultValue={s.packageId}
-                      disabled={changePkg.isPending || !canWrite}
-                      onChange={(e) => changePkg.mutate({ id: s.id, packageId: e.target.value })}
-                    >
-                      {packages?.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name} ({p.rateLimit})</option>
-                      ))}
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <select
+                        className="input py-1"
+                        value={pkgSel[s.id] ?? s.packageId}
+                        disabled={changePkg.isPending || !canWrite}
+                        onChange={(e) => setPkgSel((p) => ({ ...p, [s.id]: e.target.value }))}
+                      >
+                        {packages?.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name} ({p.rateLimit})</option>
+                        ))}
+                      </select>
+                      {canWrite && (pkgSel[s.id] && pkgSel[s.id] !== s.packageId) && (
+                        <button
+                          className="btn-primary py-1"
+                          disabled={changePkg.isPending}
+                          onClick={() => changePkg.mutate({ id: s.id, packageId: pkgSel[s.id] })}
+                          title="Simpan & terapkan ke Mikrotik"
+                        >
+                          {changePkg.isPending && changePkg.variables?.id === s.id
+                            ? <Loader2 size={14} className="animate-spin" />
+                            : <Save size={14} />} Save
+                        </button>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <span className={`badge ${tone[s.status] ?? 'bg-slate-100'}`}>{s.status}</span>

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@modules/auth/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
@@ -28,5 +28,12 @@ export class BillingController {
   @Roles('admin', 'finance')
   generateMonthly(@Body('month') month?: string) {
     return this.billing.generateMonthly(month);
+  }
+
+  /** Bayar manual (tunai/transfer) → lunas + pelanggan otomatis aktif kembali. */
+  @Post('invoices/:id/pay')
+  @Roles('admin', 'finance')
+  pay(@Param('id') id: string, @Body('method') method?: string) {
+    return this.billing.payManual(id, method);
   }
 }
