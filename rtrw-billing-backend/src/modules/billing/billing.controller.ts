@@ -4,13 +4,17 @@ import { JwtAuthGuard } from '@modules/auth/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { Roles } from '@common/decorators/roles.decorator';
 import { BillingService } from './billing.service';
+import { PaymentGatewayService } from './payment-gateway.service';
 
 @ApiTags('billing')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('billing')
 export class BillingController {
-  constructor(private readonly billing: BillingService) {}
+  constructor(
+    private readonly billing: BillingService,
+    private readonly gateway: PaymentGatewayService,
+  ) {}
 
   @Get('invoices')
   list() {
@@ -23,7 +27,6 @@ export class BillingController {
     return this.billing.generateInvoice(subscriptionId);
   }
 
-  /** Bulk monthly invoice run. Body: { month?: "YYYY-MM" } (default bulan berjalan). */
   @Post('invoices/generate-monthly')
   @Roles('admin', 'finance')
   generateMonthly(@Body('month') month?: string) {
@@ -35,5 +38,22 @@ export class BillingController {
   @Roles('admin', 'finance')
   pay(@Param('id') id: string, @Body('method') method?: string) {
     return this.billing.payManual(id, method);
+  }
+
+  /** Generate link pembayaran online via Tripay atau Midtrans. */
+  @Post('invoices/:id/payment-link')
+  @Roles('admin', 'finance', 'operator')
+  async paymentLink(
+    @Param('id') id: string,
+    @Body('gateway') gatewayName: string = 'tripay',
+  ) {
+    return this.billing.createPaymentLink(id, gatewayName, this.gateway);
+  }
+
+  /** Cek apakah payment gateway sudah dikonfigurasi. */
+  @Get('gateway/status')
+  @Roles('admin', 'finance')
+  gatewayStatus() {
+    return this.gateway.getStatus();
   }
 }

@@ -6,6 +6,7 @@ import { MIKROTIK_QUEUE } from '@modules/scheduler/queue.constants';
 import { BillingService } from './billing.service';
 import { BillingController } from './billing.controller';
 import { PaymentWebhookController } from './payment-webhook.controller';
+import { PaymentGatewayService } from './payment-gateway.service';
 
 @Module({
   imports: [
@@ -13,7 +14,7 @@ import { PaymentWebhookController } from './payment-webhook.controller';
     BullModule.registerQueue({ name: MIKROTIK_QUEUE }),
   ],
   controllers: [BillingController, PaymentWebhookController],
-  providers: [BillingService],
+  providers: [BillingService, PaymentGatewayService],
   exports: [BillingService],
 })
 export class BillingModule {}

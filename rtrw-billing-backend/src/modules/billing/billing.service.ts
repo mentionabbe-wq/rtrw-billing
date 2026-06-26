@@ -138,6 +138,29 @@ export class BillingService {
     return this.invoices.save(invoice);
   }
 
+  /** Generate link pembayaran online untuk invoice tertentu. */
+  async createPaymentLink(invoiceId: string, gatewayName: string, gateway: any) {
+    const inv = await this.invoices.findOne({
+      where: { id: invoiceId },
+      relations: { subscription: { customer: true } },
+    });
+    if (!inv) throw new NotFoundException('Invoice not found');
+    if (inv.status === 'paid') return { alreadyPaid: true };
+
+    const customer = inv.subscription?.customer;
+    const phone = customer?.phoneEnc ? this.crypto.decrypt(customer.phoneEnc) : null;
+    const params = {
+      invoiceNo: inv.invoiceNo,
+      amount: Math.round(Number(inv.amount)),
+      customerName: customer?.fullName ?? 'Pelanggan',
+      customerPhone: phone ?? undefined,
+      description: `Tagihan Internet ${inv.periodStart?.slice(0, 7) ?? inv.invoiceNo}`,
+    };
+
+    if (gatewayName === 'midtrans') return gateway.createMidtrans(params);
+    return gateway.createTripay(params);
+  }
+
   /**
    * Mark invoice paid + extend due date + enqueue Mikrotik reactivation.
    * Idempotent: if already paid, it just no-ops.

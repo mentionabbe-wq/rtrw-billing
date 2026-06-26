@@ -19,6 +19,19 @@ export default () => ({
     refreshExpires: process.env.JWT_REFRESH_EXPIRES || '7d',
   },
   encKey: process.env.DATA_ENC_KEY,
+  payment: {
+    // Tripay — https://tripay.co.id/member/merchant/api
+    tripayApiKey: process.env.TRIPAY_API_KEY || '',
+    tripayPrivateKey: process.env.TRIPAY_PRIVATE_KEY || '',
+    tripayMerchantCode: process.env.TRIPAY_MERCHANT_CODE || '',
+    tripayMode: process.env.TRIPAY_MODE || 'sandbox', // 'sandbox' | 'production'
+    // Midtrans — https://dashboard.midtrans.com (opsional, alternatif Tripay)
+    midtransServerKey: process.env.MIDTRANS_SERVER_KEY || '',
+    midtransClientKey: process.env.MIDTRANS_CLIENT_KEY || '',
+    midtransMode: process.env.MIDTRANS_MODE || 'sandbox', // 'sandbox' | 'production'
+    // URL publik app billing (untuk callback & customer redirect)
+    appUrl: process.env.APP_URL || 'http://localhost:3000',
+  },
   genieacs: {
     // URL NBI GenieACS, mis. http://192.168.88.5:7557 (kosong = fitur nonaktif)
     url: process.env.GENIEACS_URL || '',

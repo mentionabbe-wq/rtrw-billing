@@ -22,6 +22,18 @@ services:
       DATA_ENC_KEY: 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff
       SEED_ON_START: "true"
       # Integrasi GenieACS (opsional) — isi URL NBI server GenieACS, mis. http://192.168.88.5:7557
+      # Payment Gateway (opsional) — pilih salah satu atau keduanya
+      # Tripay: daftar di https://tripay.co.id, ambil API Key & Private Key di Member > Merchant > API
+      TRIPAY_API_KEY: ""
+      TRIPAY_PRIVATE_KEY: ""
+      TRIPAY_MERCHANT_CODE: ""
+      TRIPAY_MODE: "sandbox"          # ganti ke "production" setelah live
+      # Midtrans: daftar di https://dashboard.midtrans.com
+      MIDTRANS_SERVER_KEY: ""
+      MIDTRANS_CLIENT_KEY: ""
+      MIDTRANS_MODE: "sandbox"        # ganti ke "production" setelah live
+      # URL publik billing (untuk callback gateway & redirect setelah bayar)
+      APP_URL: "http://IP-CASAOS:3000"   # ganti dengan IP/domain server Anda
       GENIEACS_URL: ""
       GENIEACS_USERNAME: ""
       GENIEACS_PASSWORD: ""
