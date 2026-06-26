@@ -264,6 +264,38 @@ export class MikrotikService {
     }
   }
 
+  /**
+   * Buat PPP secret di Mikrotik bila belum ada, atau aktifkan kembali bila
+   * sudah ada tapi disabled. Dipanggil saat langganan baru dibuat dari UI
+   * (bukan dari Sinkron Mikrotik).
+   */
+  async provisionSecret(router: Router, sub: Subscription, password?: string, profile?: string): Promise<void> {
+    const conn = await this.connect(router);
+    try {
+      const secrets = await conn.write('/ppp/secret/print', [`?name=${sub.pppoeUser}`]);
+      if (secrets.length) {
+        // Secret sudah ada → pastikan enabled
+        await conn.write('/ppp/secret/set', [
+          `=.id=${secrets[0]['.id']}`,
+          '=disabled=no',
+          ...(profile ? [`=profile=${profile}`] : []),
+          ...(password ? [`=password=${password}`] : []),
+        ]);
+      } else {
+        // Secret belum ada → buat baru
+        await conn.write('/ppp/secret/add', [
+          `=name=${sub.pppoeUser}`,
+          `=password=${password ?? sub.pppoeUser}`,
+          `=service=pppoe`,
+          ...(profile ? [`=profile=${profile}`] : []),
+          `=comment=auto-provisioned`,
+        ]);
+      }
+    } finally {
+      conn.close();
+    }
+  }
+
   /** Liveness check used by the scheduler to update router.status. */
   async ping(router: Router): Promise<boolean> {
     try {

@@ -50,6 +50,10 @@ export class SubscriptionsService {
       status: 'active',
       dueDate: due.toISOString().slice(0, 10),
     }));
+    // Provision PPP secret ke Mikrotik (buat jika belum ada)
+    if (router) {
+      await this.queue.add('provision', { subscriptionId: sub.id }, DEFAULT_JOB_OPTS);
+    }
     return { id: sub.id };
   }
 

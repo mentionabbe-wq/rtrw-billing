@@ -32,6 +32,12 @@ export class MikrotikProcessor extends WorkerHost {
 
     try {
       switch (job.name) {
+        case 'provision': {
+          const pass = sub.pppoePassEnc ? this.crypto.decrypt(sub.pppoePassEnc) : undefined;
+          await this.mikrotik.provisionSecret(sub.router, sub, pass ?? undefined, sub.package?.pppoeProfile);
+          await this.subs.update(sub.id, { status: 'active' });
+          break;
+        }
         case 'suspend':
           await this.mikrotik.suspend(sub.router, sub);
           await this.subs.update(sub.id, { status: 'suspended' });

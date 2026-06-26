@@ -1,7 +1,7 @@
 export const MIKROTIK_QUEUE = 'mikrotik';
 export const MONITOR_QUEUE = 'monitor';
 
-export type MikrotikJobName = 'suspend' | 'activate' | 'set_bandwidth';
+export type MikrotikJobName = 'suspend' | 'activate' | 'set_bandwidth' | 'provision';
 
 export interface MikrotikJobData {
   subscriptionId: string;

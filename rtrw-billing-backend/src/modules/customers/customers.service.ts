@@ -1,9 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { DataSource, Repository } from 'typeorm';
 import { CryptoService } from '@common/crypto/crypto.service';
 import { Customer, Subscription, ServicePackage, Router } from '@database/entities';
 import { MikrotikService } from '@modules/mikrotik/mikrotik.service';
+import { MIKROTIK_QUEUE, MikrotikJobData, DEFAULT_JOB_OPTS } from '@modules/scheduler/queue.constants';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 
@@ -17,6 +20,7 @@ export class CustomersService {
     private readonly crypto: CryptoService,
     private readonly mikrotik: MikrotikService,
     private readonly dataSource: DataSource,
+    @InjectQueue(MIKROTIK_QUEUE) private readonly mikrotikQueue: Queue<MikrotikJobData>,
   ) {}
 
   /**
@@ -120,7 +124,7 @@ export class CustomersService {
       const due = new Date();
       due.setDate(due.getDate() + cycle);
 
-      await this.subs.save(this.subs.create({
+      const newSub = await this.subs.save(this.subs.create({
         customer: saved,
         package: pkg ?? null,
         router: router ?? null,
@@ -130,6 +134,10 @@ export class CustomersService {
         status: 'active',
         dueDate: due.toISOString().slice(0, 10),
       }));
+      // Provision PPP secret ke Mikrotik (buat jika belum ada)
+      if (router) {
+        await this.mikrotikQueue.add('provision', { subscriptionId: newSub.id }, DEFAULT_JOB_OPTS);
+      }
       subscriptionCreated = true;
     }
 
