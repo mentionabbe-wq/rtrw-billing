@@ -280,11 +280,11 @@ export default function Invoices() {
                     <div className="flex justify-end gap-1">
                       {/* Cetak — always visible */}
                       <button
-                        className="btn-ghost py-1 text-xs text-slate-600"
+                        className="btn-ghost py-1 text-xs"
                         title="Cetak faktur"
                         onClick={() => printInvoice(inv, portalSettings)}
                       >
-                        <Printer size={13} />
+                        <Printer size={13} /> Cetak
                       </button>
 
                       {inv.status === 'paid' ? (
