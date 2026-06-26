@@ -213,7 +213,11 @@ export class CustomersService {
   }
 
   private async nextCustomerNo(): Promise<string> {
-    const count = await this.repo.count();
-    return 'CST' + String(count + 1).padStart(6, '0');
+    const row = await this.repo
+      .createQueryBuilder('c')
+      .select('MAX(c.customerNo)', 'max')
+      .getRawOne();
+    const num = parseInt((row?.max ?? 'CST000000').replace('CST', ''), 10) || 0;
+    return 'CST' + String(num + 1).padStart(6, '0');
   }
 }
