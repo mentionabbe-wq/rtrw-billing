@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '@modules/auth/jwt-auth.guard';
-import { Roles } from '@modules/auth/roles.decorator';
-import { RolesGuard } from '@modules/auth/roles.guard';
+import { Roles } from '@common/decorators/roles.decorator';
+import { RolesGuard } from '@common/guards/roles.guard';
 import { PortalService } from './portal.service';
 
 @Controller('portal')
