@@ -84,7 +84,7 @@ export class BillingService {
     const rows = await this.invoices.find({
       order: { id: 'DESC' },
       take: 200,
-      relations: { subscription: { customer: true } },
+      relations: { subscription: { customer: true, package: true } },
     });
     return rows.map((i) => ({
       id: i.id,
@@ -93,6 +93,9 @@ export class BillingService {
       dueDate: i.dueDate,
       status: i.status,
       periodStart: i.periodStart,
+      periodEnd: i.periodEnd,
+      createdAt: i.createdAt,
+      packageName: i.subscription?.package?.name ?? null,
       customerName: i.subscription?.customer?.fullName ?? null,
       customerNo: i.subscription?.customer?.customerNo ?? null,
       pppoeUser: i.subscription?.pppoeUser ?? null,

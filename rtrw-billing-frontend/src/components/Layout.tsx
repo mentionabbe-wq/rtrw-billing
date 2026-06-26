@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Users, Package, Receipt, Activity, LogOut, Menu, X, Wifi, Network,
   Settings as SettingsIcon, ScrollText, UserCog, ShieldCheck, RadioTower,
@@ -7,6 +8,13 @@ import {
 import clsx from 'clsx';
 import { useAuth } from '@/store/auth';
 import { Capability, can } from '@/lib/rbac';
+import { api } from '@/lib/api';
+
+interface PortalSettings {
+  companyName: string;
+  logoUrl: string | null;
+  primaryColor: string;
+}
 
 const nav: { to: string; label: string; icon: any; end?: boolean; cap?: Capability }[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -28,6 +36,15 @@ export function Layout() {
   const logout = useAuth((s) => s.logout);
   const navigate = useNavigate();
 
+  const { data: branding } = useQuery<PortalSettings>({
+    queryKey: ['portal-settings'],
+    queryFn: async () => (await api.get('/portal/settings')).data,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const companyName = branding?.companyName ?? 'RT/RW Net';
+  const logoUrl = branding?.logoUrl ?? null;
+
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -43,8 +60,12 @@ export function Layout() {
         )}
       >
         <div className="flex h-16 items-center gap-2 border-b border-white/10 px-5">
-          <Wifi className="text-amber-400" size={22} />
-          <span className="font-semibold tracking-wide text-white">RT/RW Net</span>
+          {logoUrl ? (
+            <img src={logoUrl} alt="logo" className="h-8 w-8 rounded object-cover" />
+          ) : (
+            <Wifi className="text-amber-400 shrink-0" size={22} />
+          )}
+          <span className="font-semibold tracking-wide text-white truncate">{companyName}</span>
         </div>
         <nav className="space-y-1 p-3">
           {nav.filter((n) => !n.cap || can(user?.role, n.cap)).map((n) => (
