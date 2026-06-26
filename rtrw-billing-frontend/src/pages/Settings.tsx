@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 
 interface Router {
   id: string; name: string; host: string; apiPort: number;
-  apiUsername: string; status: string; hasSecret: boolean;
+  apiUsername: string; status: string; hasSecret: boolean; suspendProfile: string | null;
 }
 interface Olt {
   id: string; name: string; host: string; vendor: string; snmpVersion: string;
@@ -87,8 +87,9 @@ function RoutersPanel() {
     const fd = new FormData(e.currentTarget);
     const body: any = {
       name: fd.get('name'), host: fd.get('host'),
-      apiPort: Number(fd.get('apiPort')) || 8729,
+      apiPort: Number(fd.get('apiPort')) || 8728,
       apiUsername: fd.get('apiUsername'),
+      suspendProfile: fd.get('suspendProfile') || '',
     };
     const secret = fd.get('apiSecret') as string;
     if (secret) body.apiSecret = secret;
@@ -143,6 +144,11 @@ function RoutersPanel() {
             <input name="apiPort" type="number" className="input" placeholder="Port API (8728 plain spt Mikhmon / 8729 SSL)" defaultValue={form.apiPort ?? 8728} />
             <input name="apiUsername" className="input" placeholder="User API (least-privilege)" defaultValue={form.apiUsername} required />
             <input name="apiSecret" type="password" className="input" placeholder={form.id ? 'Password API (kosongkan = tetap)' : 'Password API'} />
+            <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 space-y-2">
+              <p className="text-xs font-medium text-blue-800">Captive Portal (opsional)</p>
+              <input name="suspendProfile" className="input font-mono text-sm" placeholder="Nama PPP profile suspend (mis. suspend-profile) — kosong = internet mati total" defaultValue={form.suspendProfile ?? ''} />
+              <p className="text-xs text-blue-600">Jika diisi, pelanggan suspend tetap konek ke jaringan tapi traffic di-redirect ke portal bayar. Profil ini harus sudah dibuat di Mikrotik.</p>
+            </div>
             {save.isError && <p className="text-sm text-red-600">Gagal menyimpan.</p>}
             <button className="btn-primary w-full" disabled={save.isPending}>{save.isPending && <Loader2 className="animate-spin" size={16} />} Simpan</button>
           </form>

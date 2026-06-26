@@ -20,6 +20,7 @@ export class UpsertRouterDto {
   @IsOptional() @IsInt() apiPort?: number;
   @IsOptional() @IsString() apiUsername?: string;
   @IsOptional() @IsString() apiSecret?: string; // plain -> encrypted server-side
+  @IsOptional() @IsString() suspendProfile?: string;
 }
 
 @Injectable()
@@ -35,7 +36,7 @@ export class RoutersService {
     return {
       id: r.id, name: r.name, host: r.host, apiPort: r.apiPort,
       apiUsername: r.apiUsername, status: r.status, lastSeenAt: r.lastSeenAt,
-      hasSecret: !!r.apiSecretEnc,
+      hasSecret: !!r.apiSecretEnc, suspendProfile: r.suspendProfile ?? null,
     };
   }
 
@@ -62,6 +63,7 @@ export class RoutersService {
     if (dto.apiPort !== undefined) r.apiPort = dto.apiPort;
     if (dto.apiUsername !== undefined) r.apiUsername = dto.apiUsername;
     if (dto.apiSecret) r.apiSecretEnc = this.crypto.encrypt(dto.apiSecret)!;
+    if (dto.suspendProfile !== undefined) r.suspendProfile = dto.suspendProfile || null;
     return this.view(await this.repo.save(r));
   }
 

@@ -26,4 +26,9 @@ export class Router {
 
   @Column({ name: 'last_seen_at', type: 'timestamptz', nullable: true })
   lastSeenAt: Date | null;
+
+  /** Nama PPP profile di Mikrotik untuk pelanggan suspend (captive portal mode).
+   *  Kosong = mode lama (disable secret, internet total mati). */
+  @Column({ name: 'suspend_profile', nullable: true })
+  suspendProfile: string | null;
 }

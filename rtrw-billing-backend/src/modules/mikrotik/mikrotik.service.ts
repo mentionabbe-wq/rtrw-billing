@@ -186,39 +186,55 @@ export class MikrotikService {
     }
   }
 
-  /** Disable PPPoE secret, drop active session, add to "isolir" address-list. */
+  /**
+   * Suspend pelanggan. Dua mode:
+   * - Captive portal (router.suspendProfile diisi): ganti profil PPP ke profil
+   *   suspend → pelanggan tetap bisa konek tapi traffic di-redirect ke portal.
+   * - Mode lama (suspendProfile kosong): disable PPP secret → internet total mati.
+   */
   async suspend(router: Router, sub: Subscription): Promise<void> {
     const conn = await this.connect(router);
     try {
-      await this.setSecretDisabled(conn, sub.pppoeUser, true);
-      await this.dropActiveSession(conn, sub.pppoeUser);
-      if (sub.ipStatic) {
-        await conn
-          .write('/ip/firewall/address-list/add', [
-            '=list=isolir',
-            `=address=${sub.ipStatic}`,
-            `=comment=auto-suspend ${sub.pppoeUser}`,
-          ])
-          .catch(() => undefined); // already present
+      if (router.suspendProfile) {
+        // Mode captive portal: ganti ke profil suspend, putus sesi agar reconnect
+        const secrets = await conn.write('/ppp/secret/print', [`?name=${sub.pppoeUser}`]);
+        if (secrets.length) {
+          await conn.write('/ppp/secret/set', [
+            `=.id=${secrets[0]['.id']}`,
+            `=profile=${router.suspendProfile}`,
+          ]);
+        }
+        await this.dropActiveSession(conn, sub.pppoeUser);
+      } else {
+        // Mode lama: disable secret + putus sesi
+        await this.setSecretDisabled(conn, sub.pppoeUser, true);
+        await this.dropActiveSession(conn, sub.pppoeUser);
       }
     } finally {
       conn.close();
     }
   }
 
-  /** Re-enable PPPoE secret and remove from "isolir" address-list. */
+  /**
+   * Aktifkan kembali pelanggan.
+   * - Captive portal mode: kembalikan profil ke paket asli (atau 'default').
+   * - Mode lama: enable kembali PPP secret.
+   */
   async activate(router: Router, sub: Subscription): Promise<void> {
     const conn = await this.connect(router);
     try {
-      await this.setSecretDisabled(conn, sub.pppoeUser, false);
-      if (sub.ipStatic) {
-        const items = await conn.write('/ip/firewall/address-list/print', [
-          '?list=isolir',
-          `?address=${sub.ipStatic}`,
-        ]);
-        for (const it of items) {
-          await conn.write('/ip/firewall/address-list/remove', [`=.id=${it['.id']}`]);
+      if (router.suspendProfile) {
+        const originalProfile = (sub as any).package?.pppoeProfile || 'default';
+        const secrets = await conn.write('/ppp/secret/print', [`?name=${sub.pppoeUser}`]);
+        if (secrets.length) {
+          await conn.write('/ppp/secret/set', [
+            `=.id=${secrets[0]['.id']}`,
+            `=profile=${originalProfile}`,
+          ]);
         }
+        await this.dropActiveSession(conn, sub.pppoeUser);
+      } else {
+        await this.setSecretDisabled(conn, sub.pppoeUser, false);
       }
     } finally {
       conn.close();
