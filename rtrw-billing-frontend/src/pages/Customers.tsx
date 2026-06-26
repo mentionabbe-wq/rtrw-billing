@@ -225,7 +225,16 @@ export default function Customers() {
                   </select>
                 </div>
               )}
-              {(createMut.isError || updateMut.isError) && <p className="text-sm text-red-600">Gagal menyimpan.</p>}
+              {(createMut.isError || updateMut.isError) && (
+                <p className="text-sm text-red-600">
+                  Gagal menyimpan:{' '}
+                  {(createMut.error as any)?.response?.data?.message
+                    ?? (updateMut.error as any)?.response?.data?.message
+                    ?? (createMut.error as any)?.message
+                    ?? (updateMut.error as any)?.message
+                    ?? 'cek log server (docker logs rtrw-billing-app)'}
+                </p>
+              )}
               <button className="btn-primary w-full" disabled={pending}>
                 {pending && <Loader2 className="animate-spin" size={16} />}
                 Simpan

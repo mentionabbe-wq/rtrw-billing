@@ -19,7 +19,7 @@ services:
       JWT_REFRESH_SECRET: string-acak-2      # <-- GANTI
       JWT_EXPIRES: 15m
       JWT_REFRESH_EXPIRES: 7d
-      DATA_ENC_KEY: 0f1e2d3c4b5a69788796a5b4c3d2e1f00112233445566778899aabbccddeeff00  # <-- GANTI (64 hex)
+      DATA_ENC_KEY: 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff  # <-- GANTI (harus tepat 64 karakter hex)
       SEED_ON_START: "true"
       GENIEACS_URL: ""
       GENIEACS_USERNAME: ""
