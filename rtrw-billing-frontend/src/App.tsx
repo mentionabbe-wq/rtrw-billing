@@ -16,6 +16,7 @@ import Settings from '@/pages/Settings';
 import Audit from '@/pages/Audit';
 import Users from '@/pages/Users';
 import Security from '@/pages/Security';
+import Portal from '@/pages/Portal';
 
 function RequireCap({ cap, children }: { cap: Capability; children: ReactNode }) {
   const allowed = useCan(cap);
@@ -26,6 +27,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/portal" element={<Portal />} />
       <Route
         element={
           <ProtectedRoute>

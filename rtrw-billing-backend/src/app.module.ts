@@ -24,6 +24,7 @@ import { OltsModule } from '@modules/olts/olts.module';
 import { UsersModule } from '@modules/users/users.module';
 import { GenieacsModule } from '@modules/genieacs/genieacs.module';
 import { SchedulerModule } from '@modules/scheduler/scheduler.module';
+import { PortalModule } from '@modules/portal/portal.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { SchedulerModule } from '@modules/scheduler/scheduler.module';
     UsersModule,
     GenieacsModule,
     SchedulerModule,
+    PortalModule,
   ],
 })
 export class AppModule {}

@@ -10,6 +10,7 @@ export { MikrotikSyncLog } from './sync-log.entity';
 export { DeviceMetric } from './device-metric.entity';
 export { Olt } from './olt.entity';
 export { AuditLog } from './audit-log.entity';
+export { PortalSetting } from './portal-setting.entity';
 
 import { User } from './user.entity';
 import { ServicePackage } from './service-package.entity';
@@ -23,8 +24,9 @@ import { MikrotikSyncLog } from './sync-log.entity';
 import { DeviceMetric } from './device-metric.entity';
 import { Olt } from './olt.entity';
 import { AuditLog } from './audit-log.entity';
+import { PortalSetting } from './portal-setting.entity';
 
 export const ALL_ENTITIES = [
   User, ServicePackage, Router, Customer, Subscription,
-  Device, Invoice, Payment, MikrotikSyncLog, DeviceMetric, Olt, AuditLog,
+  Device, Invoice, Payment, MikrotikSyncLog, DeviceMetric, Olt, AuditLog, PortalSetting,
 ];

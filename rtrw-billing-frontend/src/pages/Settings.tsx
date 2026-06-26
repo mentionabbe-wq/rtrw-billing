@@ -1,6 +1,6 @@
 import { FormEvent, ReactNode, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Loader2, X, Trash2, Pencil, PlugZap, Server, Network } from 'lucide-react';
+import { Plus, Loader2, X, Trash2, Pencil, PlugZap, Server, Network, Globe, ExternalLink } from 'lucide-react';
 import { api } from '@/lib/api';
 
 interface Router {
@@ -19,12 +19,12 @@ const statusTone: Record<string, string> = {
 };
 
 export default function Settings() {
-  const [tab, setTab] = useState<'routers' | 'olts'>('routers');
+  const [tab, setTab] = useState<'routers' | 'olts' | 'portal'>('routers');
 
   return (
     <div className="space-y-5">
-      <h1 className="text-xl font-semibold">Pengaturan Perangkat</h1>
-      <div className="flex gap-2 border-b border-slate-200">
+      <h1 className="text-xl font-semibold">Pengaturan</h1>
+      <div className="flex gap-2 border-b border-slate-200 flex-wrap">
         <button
           className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === 'routers' ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500'}`}
           onClick={() => setTab('routers')}
@@ -37,8 +37,16 @@ export default function Settings() {
         >
           <Network size={15} className="mr-1 inline" /> OLT (SNMP)
         </button>
+        <button
+          className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === 'portal' ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500'}`}
+          onClick={() => setTab('portal')}
+        >
+          <Globe size={15} className="mr-1 inline" /> Portal Bayar
+        </button>
       </div>
-      {tab === 'routers' ? <RoutersPanel /> : <OltsPanel />}
+      {tab === 'routers' && <RoutersPanel />}
+      {tab === 'olts' && <OltsPanel />}
+      {tab === 'portal' && <PortalPanel />}
     </div>
   );
 }
@@ -250,6 +258,184 @@ function OltsPanel() {
             <input name="snmpPrivKey" type="password" className="input" placeholder={form.id ? 'Priv key (kosongkan = tetap)' : 'SNMPv3 priv key (AES) — kosongkan utk v2c'} />
             {save.isError && <p className="text-sm text-red-600">Gagal menyimpan.</p>}
             <button className="btn-primary w-full" disabled={save.isPending}>{save.isPending && <Loader2 className="animate-spin" size={16} />} Simpan</button>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+/* -------------------------- Portal Panel -------------------------- */
+interface BankAccount { bank: string; accountNo: string; accountName: string }
+interface PortalSettings {
+  companyName: string; logoUrl: string; primaryColor: string; tagline: string;
+  suspendMessage: string; whatsappNumber: string; paymentInstructions: string;
+  bankAccounts: BankAccount[]; footerText: string;
+}
+
+function PortalPanel() {
+  const qc = useQueryClient();
+  const [bankForm, setBankForm] = useState<BankAccount | null>(null);
+  const [bankIdx, setBankIdx] = useState<number | null>(null);
+
+  const { data, isLoading } = useQuery<PortalSettings>({
+    queryKey: ['portal-settings'],
+    queryFn: async () => (await api.get('/portal/settings')).data,
+  });
+
+  const save = useMutation({
+    mutationFn: (body: any) => api.patch('/portal/settings', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['portal-settings'] }),
+  });
+
+  const [color, setColor] = useState(data?.primaryColor ?? '#012b6d');
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    save.mutate({
+      companyName: fd.get('companyName'),
+      logoUrl: fd.get('logoUrl') || null,
+      primaryColor: color,
+      tagline: fd.get('tagline'),
+      suspendMessage: fd.get('suspendMessage'),
+      whatsappNumber: fd.get('whatsappNumber') || null,
+      paymentInstructions: fd.get('paymentInstructions') || null,
+      footerText: fd.get('footerText') || null,
+    });
+  }
+
+  function saveBank(b: BankAccount) {
+    const banks = [...(data?.bankAccounts ?? [])];
+    if (bankIdx !== null) banks[bankIdx] = b; else banks.push(b);
+    save.mutate({ bankAccounts: banks });
+    setBankForm(null); setBankIdx(null);
+  }
+
+  function removeBank(i: number) {
+    const banks = (data?.bankAccounts ?? []).filter((_, idx) => idx !== i);
+    save.mutate({ bankAccounts: banks });
+  }
+
+  if (isLoading) return <div className="text-slate-400 py-8 text-center">Memuat…</div>;
+
+  return (
+    <div className="space-y-6">
+      {/* Preview link */}
+      <div className="card p-4 flex items-center justify-between gap-4">
+        <div>
+          <p className="font-medium text-sm">Halaman Portal Bayar</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Pelanggan suspended akan diarahkan ke halaman ini via Mikrotik NAT redirect.
+          </p>
+        </div>
+        <a href="/portal" target="_blank" rel="noopener noreferrer"
+          className="btn-ghost text-brand-600 flex items-center gap-1 whitespace-nowrap text-sm">
+          <ExternalLink size={14} /> Lihat Portal
+        </a>
+      </div>
+
+      {/* General settings */}
+      <div className="card p-5">
+        <h3 className="font-semibold mb-4 text-sm text-slate-700">Identitas & Pesan</h3>
+        <form onSubmit={onSubmit} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Nama Perusahaan</label>
+              <input name="companyName" className="input" defaultValue={data?.companyName} placeholder="RT/RW Net" required />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Tagline</label>
+              <input name="tagline" className="input" defaultValue={data?.tagline} placeholder="Layanan Internet Rumahan" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Warna Utama</label>
+              <div className="flex gap-2 items-center">
+                <input type="color" className="h-9 w-14 rounded border border-slate-200 p-1 cursor-pointer" value={color} onChange={(e) => setColor(e.target.value)} />
+                <input className="input flex-1 font-mono text-xs" value={color} onChange={(e) => setColor(e.target.value)} placeholder="#012b6d" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">No. WhatsApp (tanpa +)</label>
+              <input name="whatsappNumber" className="input" defaultValue={data?.whatsappNumber ?? ''} placeholder="6281234567890" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">URL Logo (opsional)</label>
+            <input name="logoUrl" className="input" defaultValue={data?.logoUrl ?? ''} placeholder="https://..." />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Pesan Penangguhan</label>
+            <textarea name="suspendMessage" className="input" rows={2} defaultValue={data?.suspendMessage} />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Cara Pembayaran (opsional)</label>
+            <textarea name="paymentInstructions" className="input" rows={3}
+              defaultValue={data?.paymentInstructions ?? ''}
+              placeholder="Contoh: Transfer ke rekening di bawah, lalu konfirmasi ke WhatsApp dengan kirim bukti transfer." />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Teks Footer (opsional)</label>
+            <input name="footerText" className="input" defaultValue={data?.footerText ?? ''} placeholder="© 2024 RT/RW Net Anda" />
+          </div>
+          <button className="btn-primary" disabled={save.isPending}>
+            {save.isPending && <Loader2 className="animate-spin" size={15} />} Simpan
+          </button>
+        </form>
+      </div>
+
+      {/* Bank accounts */}
+      <div className="card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-sm text-slate-700">Rekening Pembayaran</h3>
+          <button className="btn-primary text-xs" onClick={() => { setBankForm({ bank: '', accountNo: '', accountName: '' }); setBankIdx(null); }}>
+            <Plus size={14} /> Tambah Rekening
+          </button>
+        </div>
+        {data?.bankAccounts.length === 0 && <p className="text-sm text-slate-400">Belum ada rekening. Tambah agar pelanggan tahu harus transfer ke mana.</p>}
+        <div className="space-y-2">
+          {data?.bankAccounts.map((b, i) => (
+            <div key={i} className="flex items-center gap-3 rounded-lg border border-slate-200 p-3">
+              <div className="flex-1">
+                <p className="font-semibold text-sm">{b.bank}</p>
+                <p className="font-mono text-xs text-slate-600">{b.accountNo} — {b.accountName}</p>
+              </div>
+              <button className="btn-ghost" onClick={() => { setBankForm(b); setBankIdx(i); }}><Pencil size={14} /></button>
+              <button className="btn-ghost text-rose-600" onClick={() => removeBank(i)}><Trash2 size={14} /></button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Mikrotik NAT instructions */}
+      <div className="card p-5 border-amber-200 bg-amber-50">
+        <h3 className="font-semibold text-sm text-amber-800 mb-2">Cara Setup Redirect di Mikrotik</h3>
+        <p className="text-xs text-amber-700 mb-3">
+          Tambahkan rule berikut di Mikrotik agar pelanggan suspended otomatis diarahkan ke halaman portal ini.
+        </p>
+        <pre className="bg-amber-100 rounded p-3 text-xs text-amber-900 overflow-x-auto whitespace-pre-wrap">{
+`# Ganti IP_SERVER dengan IP CasaOS/server billing Anda
+/ip firewall nat
+add chain=dstnat src-address-list=isolir protocol=tcp dst-port=80 \\
+    action=dst-nat to-addresses=IP_SERVER to-ports=3000 comment="captive-portal"
+add chain=dstnat src-address-list=isolir protocol=tcp dst-port=443 \\
+    action=dst-nat to-addresses=IP_SERVER to-ports=3000 comment="captive-portal-https"`
+        }</pre>
+        <p className="text-xs text-amber-700 mt-2">
+          Pelanggan yang di-suspend akan masuk ke address-list <code className="bg-amber-100 px-1 rounded">isolir</code>, lalu HTTP/HTTPS-nya diarahkan ke port 3000 server billing → halaman <code className="bg-amber-100 px-1 rounded">/portal</code>.
+        </p>
+      </div>
+
+      {/* Bank form modal */}
+      {bankForm && (
+        <Modal title={bankIdx !== null ? 'Edit Rekening' : 'Tambah Rekening'} onClose={() => { setBankForm(null); setBankIdx(null); }}>
+          <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); saveBank({ bank: fd.get('bank') as string, accountNo: fd.get('accountNo') as string, accountName: fd.get('accountName') as string }); }} className="space-y-3">
+            <input name="bank" className="input" placeholder="Nama Bank (mis. BRI, BCA, Mandiri)" defaultValue={bankForm.bank} required />
+            <input name="accountNo" className="input font-mono" placeholder="Nomor Rekening" defaultValue={bankForm.accountNo} required />
+            <input name="accountName" className="input" placeholder="Atas Nama" defaultValue={bankForm.accountName} required />
+            <button className="btn-primary w-full">Simpan</button>
           </form>
         </Modal>
       )}
