@@ -78,7 +78,7 @@ export default function VoucherStore() {
       return res.data;
     },
     enabled: !!codeFromUrl,
-    refetchInterval: (data) => (data?.status === 'pending' ? 5000 : false),
+    refetchInterval: (query) => (query.state.data?.status === 'pending' ? 5000 : false),
   });
 
   const defaultRouter = routers?.[0];
