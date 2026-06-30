@@ -37,7 +37,7 @@ export class HotspotService {
     return Array.from({ length: 8 }, () => alpha[Math.floor(Math.random() * alpha.length)]).join('');
   }
 
-  /** Konversi menit ke format uptime Mikrotik, mis. "1d00:00:00" atau "01:00:00". */
+  /** Konversi menit ke format uptime Mikrotik: "1d00:00:00" atau "01:00:00". */
   private toUptime(minutes: number): string {
     const d = Math.floor(minutes / 1440);
     const h = Math.floor((minutes % 1440) / 60);
@@ -117,8 +117,7 @@ export class HotspotService {
   }
 
   /**
-   * Generate batch voucher secara langsung (admin).
-   * Voucher langsung dibuat di Mikrotik dengan status active.
+   * Generate batch voucher (admin) — langsung dibuat di Mikrotik, status active.
    */
   async generateBatch(packageId: number, routerId: string, count: number) {
     const pkg = await this.pkgs.findOneOrFail({ where: { id: packageId } });
@@ -130,39 +129,39 @@ export class HotspotService {
       const code = this.genCode();
       const username = code.replace(/-/g, '');
       const password = this.genPassword();
-      const passwordEnc = this.crypto.encrypt(password);
+      const passwordEnc = this.crypto.encrypt(password) as Buffer;
 
-      await this.vouchers.save(
-        this.vouchers.create({
-          code, username, passwordEnc,
-          packageId, routerId,
-          status: 'active',
-          amount: pkg.price,
-          expiresAt: new Date(Date.now() + 90 * 24 * 3600 * 1000), // 90 hari
-        }),
-      );
+      const v = this.vouchers.create();
+      v.code = code;
+      v.username = username;
+      v.passwordEnc = passwordEnc;
+      v.packageId = packageId;
+      v.routerId = routerId;
+      v.status = 'active';
+      v.amount = pkg.price;
+      v.expiresAt = new Date(Date.now() + 90 * 24 * 3600 * 1000);
+      await this.vouchers.save(v);
 
       try {
         await this.mikrotik.addHotspotUser(
           router, username, password, pkg.mikrotikProfile, this.toUptime(pkg.durationMinutes),
         );
       } catch (e) {
-        this.logger.warn(`addHotspotUser ${username} gagal: ${e.message}`);
+        this.logger.warn(`addHotspotUser ${username} gagal: ${(e as Error).message}`);
       }
 
       created.push({ code, username, password, packageName: pkg.name });
     }
 
-    this.logger.log(`Generated ${created.length} vouchers for pkg=${pkg.name} router=${router.name}`);
+    this.logger.log(`Generated ${created.length} vouchers pkg=${pkg.name} router=${router.name}`);
     return created;
   }
 
   /**
    * Pembelian online — buat voucher pending + payment link.
-   * appUrl dan paymentGateway di-pass dari controller agar tidak circular dependency.
    */
   async purchaseVoucher(
-    dto: { packageId: number; routerId: string; buyerName: string; buyerPhone?: string; gateway: string },
+    dto: { packageId: number; routerId: string; buyerName?: string; buyerPhone?: string; gateway: string },
     paymentGateway: PaymentGatewayService,
     appUrl: string,
   ) {
@@ -171,20 +170,20 @@ export class HotspotService {
     const code = this.genCode();
     const username = code.replace(/-/g, '');
     const password = this.genPassword();
-    const passwordEnc = this.crypto.encrypt(password);
-    const buyerPhoneEnc = dto.buyerPhone ? this.crypto.encrypt(dto.buyerPhone) : null;
+    const passwordEnc = this.crypto.encrypt(password) as Buffer;
+    const buyerPhoneEnc = dto.buyerPhone ? this.crypto.encrypt(dto.buyerPhone) as Buffer : null;
 
-    await this.vouchers.save(
-      this.vouchers.create({
-        code, username, passwordEnc,
-        packageId: dto.packageId,
-        routerId: dto.routerId,
-        status: 'pending',
-        buyerName: dto.buyerName || null,
-        buyerPhoneEnc,
-        amount: pkg.price,
-      }),
-    );
+    const v = this.vouchers.create();
+    v.code = code;
+    v.username = username;
+    v.passwordEnc = passwordEnc;
+    v.packageId = dto.packageId;
+    v.routerId = dto.routerId;
+    v.status = 'pending';
+    v.buyerName = dto.buyerName ?? null;
+    v.buyerPhoneEnc = buyerPhoneEnc;
+    v.amount = pkg.price;
+    await this.vouchers.save(v);
 
     const params = {
       invoiceNo: code,
@@ -206,7 +205,6 @@ export class HotspotService {
 
   /**
    * Dipanggil webhook saat pembayaran voucher konfirmasi.
-   * code = merchant_ref / order_id dari gateway.
    */
   async activateByCode(code: string, gatewayRef: string, amount: string, method: string): Promise<void> {
     const voucher = await this.vouchers.findOne({
@@ -216,6 +214,7 @@ export class HotspotService {
     if (!voucher || voucher.status !== 'pending') return;
 
     const password = this.crypto.decrypt(voucher.passwordEnc);
+    if (!password) return;
 
     if (voucher.router && voucher.package) {
       try {
@@ -227,7 +226,7 @@ export class HotspotService {
           this.toUptime(voucher.package.durationMinutes),
         );
       } catch (e) {
-        this.logger.warn(`addHotspotUser ${voucher.username} saat aktivasi: ${e.message}`);
+        this.logger.warn(`addHotspotUser ${voucher.username} saat aktivasi: ${(e as Error).message}`);
       }
     }
 
@@ -246,7 +245,7 @@ export class HotspotService {
           `📶 Paket: ${voucher.package?.name ?? ''}\n` +
           `🔑 Username: ${voucher.username}\n` +
           `🔐 Password: ${password}\n\n` +
-          `Masukkan username & password tersebut di halaman login hotspot WiFi. Terima kasih!`,
+          `Masukkan username & password di halaman login hotspot WiFi. Terima kasih!`,
         );
       }
     }
@@ -284,7 +283,7 @@ export class HotspotService {
       try {
         await this.mikrotik.removeHotspotUser(v.router, v.username);
       } catch (e) {
-        this.logger.warn(`removeHotspotUser ${v.username}: ${e.message}`);
+        this.logger.warn(`removeHotspotUser ${v.username}: ${(e as Error).message}`);
       }
     }
 

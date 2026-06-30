@@ -17,9 +17,9 @@ export class HotspotVoucher {
   @Column({ unique: true, length: 20 })
   username: string;
 
-  /** Password dienkripsi AES-256-GCM. */
-  @Column({ name: 'password_enc', type: 'text' })
-  passwordEnc: string;
+  /** Password dienkripsi AES-256-GCM, disimpan sebagai BYTEA. */
+  @Column({ name: 'password_enc', type: 'bytea' })
+  passwordEnc: Buffer;
 
   @ManyToOne(() => HotspotPackage, { nullable: true, eager: false })
   @JoinColumn({ name: 'package_id' })
@@ -35,16 +35,16 @@ export class HotspotVoucher {
   @Column({ name: 'router_id', type: 'bigint', nullable: true })
   routerId: string;
 
-  /** pending → active → void. pending = belum bayar / sudah bayar belum aktivasi. */
+  /** pending → active → void. */
   @Column({ default: 'pending' })
   status: string;
 
   @Column({ name: 'buyer_name', nullable: true })
   buyerName: string;
 
-  /** Nomor WA pembeli, dienkripsi. */
-  @Column({ name: 'buyer_phone_enc', type: 'text', nullable: true })
-  buyerPhoneEnc: string;
+  /** Nomor WA pembeli, dienkripsi AES-256-GCM, disimpan sebagai BYTEA. */
+  @Column({ name: 'buyer_phone_enc', type: 'bytea', nullable: true })
+  buyerPhoneEnc: Buffer | null;
 
   @Column({ name: 'payment_ref', nullable: true })
   paymentRef: string;
@@ -55,7 +55,6 @@ export class HotspotVoucher {
   @Column({ type: 'numeric', precision: 10, scale: 2, nullable: true })
   amount: string;
 
-  /** Batas akhir kode ini boleh dipakai (bukan limit-uptime Mikrotik). */
   @Column({ name: 'expires_at', type: 'timestamptz', nullable: true })
   expiresAt: Date;
 
