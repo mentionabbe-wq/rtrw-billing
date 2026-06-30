@@ -1,0 +1,64 @@
+import {
+  Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn,
+} from 'typeorm';
+import { HotspotPackage } from './hotspot-package.entity';
+import { Router } from './router.entity';
+
+@Entity('hotspot_vouchers')
+export class HotspotVoucher {
+  @PrimaryGeneratedColumn('increment', { type: 'bigint' })
+  id: string;
+
+  /** Kode voucher yg ditampilkan ke pelanggan, mis. HS-ABCD-1234. Juga merchant_ref ke gateway. */
+  @Column({ unique: true, length: 20 })
+  code: string;
+
+  /** Username hotspot Mikrotik (= code tanpa tanda hubung). */
+  @Column({ unique: true, length: 20 })
+  username: string;
+
+  /** Password dienkripsi AES-256-GCM. */
+  @Column({ name: 'password_enc', type: 'text' })
+  passwordEnc: string;
+
+  @ManyToOne(() => HotspotPackage, { nullable: true, eager: false })
+  @JoinColumn({ name: 'package_id' })
+  package: HotspotPackage;
+
+  @Column({ name: 'package_id', type: 'int', nullable: true })
+  packageId: number;
+
+  @ManyToOne(() => Router, { nullable: true, eager: false })
+  @JoinColumn({ name: 'router_id' })
+  router: Router;
+
+  @Column({ name: 'router_id', type: 'bigint', nullable: true })
+  routerId: string;
+
+  /** pending → active → void. pending = belum bayar / sudah bayar belum aktivasi. */
+  @Column({ default: 'pending' })
+  status: string;
+
+  @Column({ name: 'buyer_name', nullable: true })
+  buyerName: string;
+
+  /** Nomor WA pembeli, dienkripsi. */
+  @Column({ name: 'buyer_phone_enc', type: 'text', nullable: true })
+  buyerPhoneEnc: string;
+
+  @Column({ name: 'payment_ref', nullable: true })
+  paymentRef: string;
+
+  @Column({ name: 'payment_gateway', nullable: true })
+  paymentGateway: string;
+
+  @Column({ type: 'numeric', precision: 10, scale: 2, nullable: true })
+  amount: string;
+
+  /** Batas akhir kode ini boleh dipakai (bukan limit-uptime Mikrotik). */
+  @Column({ name: 'expires_at', type: 'timestamptz', nullable: true })
+  expiresAt: Date;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+}

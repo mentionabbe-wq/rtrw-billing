@@ -312,6 +312,76 @@ export class MikrotikService {
     }
   }
 
+  // ─── Hotspot user management ─────────────────────────────────────────────────
+
+  /**
+   * Tambah atau update user di /ip/hotspot/user. Idempotent.
+   * limitUptime format Mikrotik: "1d00:00:00", "03:00:00", dll.
+   */
+  async addHotspotUser(
+    router: Router,
+    username: string,
+    password: string,
+    profile: string,
+    limitUptime: string,
+  ): Promise<void> {
+    const conn = await this.connect(router);
+    try {
+      const existing = await conn.write('/ip/hotspot/user/print', [`?name=${username}`]);
+      if (existing.length) {
+        await conn.write('/ip/hotspot/user/set', [
+          `=.id=${existing[0]['.id']}`,
+          `=password=${password}`,
+          `=profile=${profile}`,
+          `=limit-uptime=${limitUptime}`,
+          '=disabled=no',
+        ]);
+      } else {
+        await conn.write('/ip/hotspot/user/add', [
+          `=name=${username}`,
+          `=password=${password}`,
+          `=profile=${profile}`,
+          `=limit-uptime=${limitUptime}`,
+          '=comment=voucher-auto',
+        ]);
+      }
+    } finally {
+      conn.close();
+    }
+  }
+
+  /** Hapus user dari /ip/hotspot/user. Idempotent. */
+  async removeHotspotUser(router: Router, username: string): Promise<void> {
+    const conn = await this.connect(router);
+    try {
+      const users = await conn.write('/ip/hotspot/user/print', [`?name=${username}`]);
+      for (const u of users) {
+        await conn.write('/ip/hotspot/user/remove', [`=.id=${u['.id']}`]);
+      }
+    } finally {
+      conn.close();
+    }
+  }
+
+  /** Daftar hotspot user yang aktif di router. */
+  async listHotspotUsers(router: Router): Promise<any[]> {
+    const conn = await this.connect(router);
+    try {
+      const rows = await conn.write('/ip/hotspot/user/print');
+      return rows.map((r) => ({
+        id: r['.id'],
+        name: r.name,
+        profile: r.profile,
+        limitUptime: r['limit-uptime'],
+        uptime: r.uptime,
+        disabled: r.disabled === 'true' || r.disabled === true,
+        comment: r.comment,
+      }));
+    } finally {
+      conn.close();
+    }
+  }
+
   /** Liveness check used by the scheduler to update router.status. */
   async ping(router: Router): Promise<boolean> {
     try {

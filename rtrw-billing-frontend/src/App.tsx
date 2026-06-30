@@ -17,6 +17,8 @@ import Audit from '@/pages/Audit';
 import Users from '@/pages/Users';
 import Security from '@/pages/Security';
 import Portal from '@/pages/Portal';
+import Hotspot from '@/pages/Hotspot';
+import VoucherStore from '@/pages/VoucherStore';
 
 function RequireCap({ cap, children }: { cap: Capability; children: ReactNode }) {
   const allowed = useCan(cap);
@@ -28,6 +30,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/portal" element={<Portal />} />
+      <Route path="/voucher" element={<VoucherStore />} />
       <Route
         element={
           <ProtectedRoute>
@@ -47,6 +50,7 @@ export default function App() {
         <Route path="/audit" element={<RequireCap cap="audit.view"><Audit /></RequireCap>} />
         <Route path="/users" element={<RequireCap cap="users.manage"><Users /></RequireCap>} />
         <Route path="/security" element={<Security />} />
+        <Route path="/hotspot" element={<Hotspot />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -29,7 +29,7 @@ export class PaymentGatewayService {
     };
   }
 
-  /** Buat link pembayaran via Tripay (QRIS, VA BRI/BCA/Mandiri, Alfamart, dll) */
+  /** Buat link pembayaran via Tripay. returnUrl opsional — default ke /portal. */
   async createTripay(invoice: {
     invoiceNo: string;
     amount: number;
@@ -37,6 +37,7 @@ export class PaymentGatewayService {
     customerEmail?: string;
     customerPhone?: string;
     description: string;
+    returnUrl?: string;
   }): Promise<PaymentLinkResult> {
     const apiKey = this.config.get<string>('payment.tripayApiKey');
     const privateKey = this.config.get<string>('payment.tripayPrivateKey');
@@ -57,10 +58,10 @@ export class PaymentGatewayService {
       ? 'https://tripay.co.id/api'
       : 'https://tripay.co.id/api-sandbox';
 
-    const expiredAt = Math.floor(Date.now() / 1000) + 24 * 3600; // 24 jam
+    const expiredAt = Math.floor(Date.now() / 1000) + 24 * 3600;
 
     const body = {
-      method: 'QRIS',           // default QRIS; bisa diubah jadi BRIVA, BCAVA, dll
+      method: 'QRIS',
       merchant_ref: invoice.invoiceNo,
       amount: invoice.amount,
       customer_name: invoice.customerName,
@@ -68,7 +69,7 @@ export class PaymentGatewayService {
       customer_phone: invoice.customerPhone || '08000000000',
       order_items: [{ name: invoice.description, price: invoice.amount, quantity: 1 }],
       callback_url: `${appUrl}/api/payments/webhook/tripay`,
-      return_url: `${appUrl}/portal`,
+      return_url: invoice.returnUrl ?? `${appUrl}/portal`,
       expired_time: expiredAt,
       signature,
     };
@@ -93,7 +94,7 @@ export class PaymentGatewayService {
     };
   }
 
-  /** Buat link pembayaran via Midtrans Snap */
+  /** Buat link pembayaran via Midtrans Snap. returnUrl opsional — default ke /portal. */
   async createMidtrans(invoice: {
     invoiceNo: string;
     amount: number;
@@ -101,6 +102,7 @@ export class PaymentGatewayService {
     customerEmail?: string;
     customerPhone?: string;
     description: string;
+    returnUrl?: string;
   }): Promise<PaymentLinkResult> {
     const serverKey = this.config.get<string>('payment.midtransServerKey');
     const mode = this.config.get<string>('payment.midtransMode');
@@ -123,7 +125,7 @@ export class PaymentGatewayService {
       },
       item_details: [{ id: invoice.invoiceNo, price: invoice.amount, quantity: 1, name: invoice.description }],
       callbacks: {
-        finish: `${appUrl}/portal`,
+        finish: invoice.returnUrl ?? `${appUrl}/portal`,
         notification: `${appUrl}/api/payments/webhook/midtrans`,
       },
     };

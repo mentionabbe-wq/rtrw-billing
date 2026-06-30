@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 
 export type WaTemplate = 'invoice_baru' | 'jatuh_tempo' | 'suspend' | 'aktif_kembali';
 
+
 const TEMPLATES: Record<WaTemplate, (v: Record<string, string>) => string> = {
   invoice_baru: (v) => `Halo ${v.name}, tagihan internet ${v.period} sebesar ${v.amount} sudah terbit. Jatuh tempo ${v.due}. Terima kasih.`,
   jatuh_tempo: (v) => `Halo ${v.name}, tagihan ${v.amount} jatuh tempo hari ini. Mohon segera lakukan pembayaran agar layanan tetap aktif.`,
@@ -22,7 +23,10 @@ export class WhatsappService {
   constructor(private readonly config: ConfigService) {}
 
   async send(phone: string, template: WaTemplate, vars: Record<string, string>): Promise<void> {
-    const text = TEMPLATES[template](vars);
+    return this.sendRaw(phone, TEMPLATES[template](vars));
+  }
+
+  async sendRaw(phone: string, text: string): Promise<void> {
     const url = process.env.WA_API_URL;
     const token = process.env.WA_API_TOKEN;
 

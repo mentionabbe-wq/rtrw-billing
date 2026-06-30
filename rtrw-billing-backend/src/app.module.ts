@@ -25,6 +25,8 @@ import { UsersModule } from '@modules/users/users.module';
 import { GenieacsModule } from '@modules/genieacs/genieacs.module';
 import { SchedulerModule } from '@modules/scheduler/scheduler.module';
 import { PortalModule } from '@modules/portal/portal.module';
+import { HotspotModule } from '@modules/hotspot/hotspot.module';
+import { PaymentWebhookModule } from '@modules/billing/payment-webhook.module';
 
 @Module({
   imports: [
@@ -78,6 +80,8 @@ import { PortalModule } from '@modules/portal/portal.module';
     GenieacsModule,
     SchedulerModule,
     PortalModule,
+    HotspotModule,
+    PaymentWebhookModule,
   ],
 })
 export class AppModule {}
