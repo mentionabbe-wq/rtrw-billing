@@ -13,6 +13,7 @@ interface HotspotPackage {
   price: string;
   mikrotikProfile: string;
   rateLimit: string | null;
+  sharedUsers: number;
   isActive: boolean;
 }
 
@@ -155,7 +156,7 @@ function GenerateModal({
   );
 }
 
-// ── Package Form Modal ────────────────────────────────────────────────────────
+// ── Package Form Modal (termasuk buat profil Mikrotik) ───────────────────────
 function PackageModal({
   pkg, routers, onClose, onSaved,
 }: {
@@ -165,15 +166,22 @@ function PackageModal({
   onSaved: () => void;
 }) {
   const isEdit = !!pkg;
+
+  // Pisah rateLimit jadi upload/download untuk UX yang lebih jelas
+  const [uploadLimit, setUploadLimit] = useState(() => pkg?.rateLimit?.split('/')[0] ?? '');
+  const [downloadLimit, setDownloadLimit] = useState(() => pkg?.rateLimit?.split('/')[1] ?? '');
   const [profileRouterId, setProfileRouterId] = useState(routers[0]?.id ?? '');
   const [form, setForm] = useState({
     name: pkg?.name ?? '',
     durationMinutes: pkg?.durationMinutes ?? 1440,
     price: pkg?.price ?? '0',
     mikrotikProfile: pkg?.mikrotikProfile ?? '',
-    rateLimit: pkg?.rateLimit ?? '',
+    sharedUsers: pkg?.sharedUsers ?? 1,
     isActive: pkg?.isActive ?? true,
   });
+
+  const rateLimit = uploadLimit && downloadLimit ? `${uploadLimit}/${downloadLimit}`
+    : uploadLimit || downloadLimit || null;
 
   const profilesQ = useQuery<MikrotikProfile[]>({
     queryKey: ['mt-profiles', profileRouterId],
@@ -181,26 +189,43 @@ function PackageModal({
     enabled: !!profileRouterId,
   });
 
-  const selectedProfile = profilesQ.data?.find((p) => p.name === form.mikrotikProfile);
-
   const save = useMutation({
-    mutationFn: () => isEdit
-      ? api.patch(`/hotspot/admin/packages/${pkg!.id}`, { ...form, rateLimit: form.rateLimit || null })
-      : api.post('/hotspot/admin/packages', { ...form, rateLimit: form.rateLimit || null }),
+    mutationFn: () => {
+      const body = { ...form, rateLimit, sharedUsers: form.sharedUsers };
+      return isEdit
+        ? api.patch(`/hotspot/admin/packages/${pkg!.id}`, body)
+        : api.post('/hotspot/admin/packages', body);
+    },
     onSuccess: () => { onSaved(); onClose(); },
   });
 
   const profilesFailed = profilesQ.isError;
   const profilesEmpty = !profilesQ.isLoading && !profilesQ.isError && profilesQ.isFetched && profilesQ.data?.length === 0;
 
+  const onSelectProfile = (profileName: string) => {
+    const p = profilesQ.data?.find((x) => x.name === profileName);
+    setForm((f) => ({
+      ...f,
+      mikrotikProfile: profileName,
+      durationMinutes: p?.durationMinutes ?? f.durationMinutes,
+    }));
+    if (p?.rateLimit) {
+      const parts = p.rateLimit.split('/');
+      setUploadLimit(parts[0] ?? '');
+      setDownloadLimit(parts[1] ?? parts[0] ?? '');
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4">
-      <div className="card w-full max-w-sm flex flex-col max-h-[90vh]">
+      <div className="card w-full max-w-md flex flex-col max-h-[92vh]">
         <div className="p-5 border-b">
           <h2 className="font-semibold">{isEdit ? 'Edit Paket' : 'Tambah Paket'}</h2>
+          <p className="text-xs text-slate-400 mt-0.5">Paket disimpan ke DB dan profil otomatis dibuat/diperbarui di Mikrotik</p>
         </div>
 
-        <div className="overflow-y-auto p-5 space-y-3">
+        <div className="overflow-y-auto p-5 space-y-4">
+          {/* Info paket */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-slate-600">Nama paket</label>
@@ -214,87 +239,87 @@ function PackageModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-slate-600">Durasi (menit)</label>
-              <input type="number" className="input mt-1" placeholder="1440"
-                value={form.durationMinutes} onChange={(e) => setForm({ ...form, durationMinutes: Number(e.target.value) })} />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-slate-600">Rate Limit</label>
-              <input type="text" className="input mt-1" placeholder="2M/2M"
-                value={form.rateLimit} onChange={(e) => setForm({ ...form, rateLimit: e.target.value })} />
-            </div>
-          </div>
-
-          {/* Profile dari Mikrotik */}
-          <div className="border rounded-lg p-3 space-y-2 bg-slate-50">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-slate-600">Profile Mikrotik</label>
+          {/* Profil Mikrotik */}
+          <div className="border rounded-lg overflow-hidden">
+            <div className="bg-slate-50 px-3 py-2 flex items-center justify-between border-b">
+              <span className="text-xs font-semibold text-slate-600">Profil Mikrotik</span>
               <select className="input py-0.5 text-xs w-auto"
                 value={profileRouterId}
                 onChange={(e) => { setProfileRouterId(e.target.value); setForm((f) => ({ ...f, mikrotikProfile: '' })); }}>
                 {routers.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
             </div>
-
-            {profilesQ.isLoading && (
-              <p className="text-xs text-slate-400 flex items-center gap-1">
-                <Loader2 size={12} className="animate-spin" /> Memuat profil dari Mikrotik…
-              </p>
-            )}
-
-            {!profilesQ.isLoading && !profilesFailed && !profilesEmpty && (
-              <select className="input" value={form.mikrotikProfile}
-                onChange={(e) => {
-                  const p = profilesQ.data?.find((x) => x.name === e.target.value);
-                  setForm((f) => ({
-                    ...f,
-                    mikrotikProfile: e.target.value,
-                    rateLimit: p?.rateLimit || f.rateLimit,
-                    durationMinutes: p?.durationMinutes ?? f.durationMinutes,
-                  }));
-                }}>
-                <option value="">— pilih profil —</option>
-                {profilesQ.data?.map((p) => (
-                  <option key={p.name} value={p.name}>
-                    {p.name}{p.rateLimit ? ` (${p.rateLimit})` : ''}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {(profilesFailed || profilesEmpty) && (
-              <div className="space-y-1">
-                {profilesFailed && (
-                  <p className="text-xs text-red-500">
-                    Error: {(profilesQ.error as any)?.response?.data?.message ?? (profilesQ.error as any)?.message ?? 'Gagal konek ke Mikrotik'}
-                    {' '}<button className="underline" onClick={() => profilesQ.refetch()}>Coba lagi</button>
-                  </p>
-                )}
-                {profilesEmpty && (
-                  <p className="text-xs text-amber-600">
-                    Tidak ada profil ditemukan di router ini.{' '}
-                    <button className="underline" onClick={() => profilesQ.refetch()}>Muat ulang</button>
-                  </p>
-                )}
-                <label className="text-xs text-slate-500">Isi nama profil manual:</label>
-                <input type="text" className="input" placeholder="default"
+            <div className="p-3 space-y-2">
+              {profilesQ.isLoading && (
+                <p className="text-xs text-slate-400 flex items-center gap-1">
+                  <Loader2 size={12} className="animate-spin" /> Memuat profil…
+                </p>
+              )}
+              {!profilesQ.isLoading && !profilesFailed && !profilesEmpty && (
+                <select className="input" value={form.mikrotikProfile} onChange={(e) => onSelectProfile(e.target.value)}>
+                  <option value="">— pilih atau ketik nama baru —</option>
+                  {profilesQ.data?.map((p) => (
+                    <option key={p.name} value={p.name}>{p.name}{p.rateLimit ? ` · ${p.rateLimit}` : ''}</option>
+                  ))}
+                </select>
+              )}
+              {(profilesFailed || profilesEmpty) && (
+                <p className="text-xs text-amber-600">
+                  {profilesFailed
+                    ? (profilesQ.error as any)?.response?.data?.message ?? 'Gagal konek ke Mikrotik'
+                    : 'Belum ada profil di router ini.'}
+                  {' '}<button className="underline" onClick={() => profilesQ.refetch()}>Muat ulang</button>
+                </p>
+              )}
+              {/* Nama profil — bisa ketik manual jika ingin buat baru */}
+              <div>
+                <label className="text-xs text-slate-500">Nama profil{!profilesFailed && !profilesEmpty ? ' (atau ketik nama baru)' : ''}</label>
+                <input type="text" className="input mt-0.5" placeholder="1hari / 3jam / default"
                   value={form.mikrotikProfile}
                   onChange={(e) => setForm({ ...form, mikrotikProfile: e.target.value })} />
               </div>
-            )}
+            </div>
+          </div>
 
-            {selectedProfile && (
-              <p className="text-xs text-slate-500">
-                ⏱ {selectedProfile.durationMinutes
-                  ? selectedProfile.durationMinutes >= 1440
-                    ? `${selectedProfile.durationMinutes / 1440} hari`
-                    : `${selectedProfile.durationMinutes / 60} jam`
-                  : 'Unlimited'}
-                {selectedProfile.rateLimit && <> &bull; ⚡ {selectedProfile.rateLimit}</>}
-              </p>
-            )}
+          {/* Setting bandwidth & waktu */}
+          <div className="border rounded-lg overflow-hidden">
+            <div className="bg-slate-50 px-3 py-2 border-b">
+              <span className="text-xs font-semibold text-slate-600">Bandwidth & Waktu</span>
+            </div>
+            <div className="p-3 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-slate-500">Upload (misal: 2M)</label>
+                  <input type="text" className="input mt-0.5" placeholder="2M"
+                    value={uploadLimit} onChange={(e) => setUploadLimit(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500">Download (misal: 5M)</label>
+                  <input type="text" className="input mt-0.5" placeholder="5M"
+                    value={downloadLimit} onChange={(e) => setDownloadLimit(e.target.value)} />
+                </div>
+              </div>
+              {rateLimit && (
+                <p className="text-xs text-slate-400">Rate limit Mikrotik: <code className="bg-slate-100 px-1 rounded">{rateLimit}</code></p>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-slate-500">Durasi (menit)</label>
+                  <input type="number" className="input mt-0.5" placeholder="1440"
+                    value={form.durationMinutes} onChange={(e) => setForm({ ...form, durationMinutes: Number(e.target.value) })} />
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {form.durationMinutes >= 1440 ? `${form.durationMinutes / 1440} hari` : `${(form.durationMinutes / 60).toFixed(0)} jam`}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500">Perangkat bersamaan</label>
+                  <select className="input mt-0.5" value={form.sharedUsers}
+                    onChange={(e) => setForm({ ...form, sharedUsers: Number(e.target.value) })}>
+                    {[1, 2, 3, 5, 10].map((v) => <option key={v} value={v}>{v} perangkat</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
           </div>
 
           <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -303,9 +328,9 @@ function PackageModal({
             Aktif (tampil di halaman beli voucher)
           </label>
 
-          {form.rateLimit && form.mikrotikProfile && (
+          {form.mikrotikProfile && (
             <p className="text-xs text-indigo-600 bg-indigo-50 rounded-lg px-3 py-2">
-              Profile <strong>{form.mikrotikProfile}</strong> akan dibuat/diperbarui di semua router dengan rate limit <strong>{form.rateLimit}</strong>.
+              Profil <strong>{form.mikrotikProfile}</strong> akan dibuat/diperbarui otomatis di semua router saat Simpan.
             </p>
           )}
           {save.isError && (
@@ -316,10 +341,10 @@ function PackageModal({
         <div className="p-5 border-t flex gap-2">
           <button className="flex-1 btn-ghost" onClick={onClose}>Batal</button>
           <button className="flex-1 btn-primary"
-            disabled={save.isPending || !form.mikrotikProfile}
+            disabled={save.isPending || !form.name || !form.mikrotikProfile}
             onClick={() => save.mutate()}>
             {save.isPending ? <Loader2 size={15} className="animate-spin" /> : null}
-            Simpan
+            Simpan &amp; Sync Mikrotik
           </button>
         </div>
       </div>
@@ -663,7 +688,6 @@ export default function Hotspot() {
   const [filterStatus, setFilterStatus] = useState('');
   const [showGenerate, setShowGenerate] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [showAddProfile, setShowAddProfile] = useState(false);
   const [showSync, setShowSync] = useState(false);
   const [syncRouterId, setSyncRouterId] = useState('');
   const [syncResult, setSyncResult] = useState<any | null>(null);
@@ -833,9 +857,6 @@ export default function Hotspot() {
                 <button className="btn-ghost text-sm" onClick={() => setShowImport(true)}>
                   <RefreshCcw size={14} /> Import dari Mikrotik
                 </button>
-                <button className="btn-ghost text-sm" onClick={() => setShowAddProfile(true)}>
-                  <Plus size={14} /> Tambah Profil Mikrotik
-                </button>
                 <button className="btn-primary text-sm" onClick={() => { setEditPkg(undefined); setShowPkgModal(true); }}>
                   <Plus size={14} /> Tambah Paket
                 </button>
@@ -852,6 +873,7 @@ export default function Hotspot() {
                     <th className="px-4 py-3 font-medium">Harga</th>
                     <th className="px-4 py-3 font-medium">Profile Mikrotik</th>
                     <th className="px-4 py-3 font-medium">Rate Limit</th>
+                    <th className="px-4 py-3 font-medium">Perangkat</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3 font-medium text-right">Aksi</th>
                   </tr>
@@ -864,6 +886,7 @@ export default function Hotspot() {
                       <td className="px-4 py-3 font-medium">{rupiah(p.price)}</td>
                       <td className="px-4 py-3 font-mono text-xs text-slate-500">{p.mikrotikProfile}</td>
                       <td className="px-4 py-3 font-mono text-xs text-slate-500">{p.rateLimit ?? '—'}</td>
+                      <td className="px-4 py-3 text-xs text-slate-500">{p.sharedUsers ?? 1}x</td>
                       <td className="px-4 py-3">
                         <span className={`badge ${p.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
                           {p.isActive ? 'Aktif' : 'Nonaktif'}
@@ -887,7 +910,7 @@ export default function Hotspot() {
                     </tr>
                   ))}
                   {!packages?.length && (
-                    <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">Belum ada paket.</td></tr>
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">Belum ada paket.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -914,19 +937,6 @@ export default function Hotspot() {
       {/* Package Modal */}
       {showPkgModal && routers && (
         <PackageModal pkg={editPkg} routers={routers} onClose={() => setShowPkgModal(false)} onSaved={() => refetchPkg()} />
-      )}
-
-      {/* Add Profile Modal */}
-      {showAddProfile && routers && (
-        <AddProfileModal
-          routers={routers}
-          onClose={() => setShowAddProfile(false)}
-          onDone={(profileName) => {
-            setShowAddProfile(false);
-            // invalidate cache profil agar dropdown segar
-            qc.invalidateQueries({ queryKey: ['mt-profiles'] });
-          }}
-        />
       )}
 
       {/* Import Profiles Modal */}

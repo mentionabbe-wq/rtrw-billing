@@ -23,6 +23,10 @@ export class HotspotPackage {
   @Column({ name: 'rate_limit', nullable: true })
   rateLimit: string | null;
 
+  /** Jumlah perangkat bersamaan per voucher. */
+  @Column({ name: 'shared_users', type: 'int', default: 1 })
+  sharedUsers: number;
+
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 

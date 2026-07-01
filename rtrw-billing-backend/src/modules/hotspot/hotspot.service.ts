@@ -71,14 +71,19 @@ export class HotspotService {
     return d > 0 ? `${d}d${hms}` : hms;
   }
 
-  /** Push profile paket ke semua router yang online. */
+  /** Push profile paket ke semua router. Selalu dijalankan agar profil Mikrotik sinkron. */
   private async pushProfileToAllRouters(pkg: HotspotPackage): Promise<void> {
-    if (!pkg.rateLimit) return;
     const allRouters = await this.routers.find();
     const sessionTimeout = this.toMtSessionTimeout(pkg.durationMinutes);
     await Promise.allSettled(
       allRouters.map((r) =>
-        this.mikrotik.upsertHotspotProfile(r, pkg.mikrotikProfile, pkg.rateLimit!, sessionTimeout),
+        this.mikrotik.upsertHotspotProfile(
+          r,
+          pkg.mikrotikProfile,
+          pkg.rateLimit ?? undefined,
+          sessionTimeout,
+          String(pkg.sharedUsers ?? 1),
+        ),
       ),
     );
   }
