@@ -238,19 +238,22 @@ export class HotspotService {
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const [total, active, pending, voidCount, revTotal, revMonth] = await Promise.all([
+    const [total, active, pending, voidCount] = await Promise.all([
       this.vouchers.count(),
       this.vouchers.count({ where: { status: 'active' } }),
       this.vouchers.count({ where: { status: 'pending' } }),
       this.vouchers.count({ where: { status: 'void' } }),
+    ]);
+
+    const [revTotal, revMonth] = await Promise.all([
       this.vouchers.createQueryBuilder('v')
-        .select('COALESCE(SUM(v.amount::numeric), 0)', 'sum')
+        .select('COALESCE(SUM(CAST(v.amount AS DECIMAL)), 0)', 'sum')
         .where('v.status = :s', { s: 'active' })
         .getRawOne(),
       this.vouchers.createQueryBuilder('v')
-        .select('COALESCE(SUM(v.amount::numeric), 0)', 'sum')
+        .select('COALESCE(SUM(CAST(v.amount AS DECIMAL)), 0)', 'sum')
         .where('v.status = :s', { s: 'active' })
-        .andWhere('v.created_at >= :start', { start: startOfMonth })
+        .andWhere('v.createdAt >= :start', { start: startOfMonth })
         .getRawOne(),
     ]);
 

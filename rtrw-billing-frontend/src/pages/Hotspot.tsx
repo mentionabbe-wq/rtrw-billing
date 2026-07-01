@@ -698,6 +698,8 @@ export default function Hotspot() {
   const [showPkgModal, setShowPkgModal] = useState(false);
   const [editPkg, setEditPkg] = useState<HotspotPackage | undefined>();
   const [generatedVouchers, setGeneratedVouchers] = useState<any[] | null>(null);
+  const [voucherPage, setVoucherPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   const { data: stats } = useQuery<Stats>({
     queryKey: ['hotspot-stats'],
@@ -816,7 +818,7 @@ export default function Hotspot() {
       {tab === 'vouchers' && (
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2 items-center justify-between">
-            <select className="input w-auto text-sm" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+            <select className="input w-auto text-sm" value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setVoucherPage(1); }}>
               <option value="">Semua status</option>
               <option value="active">Aktif</option>
               <option value="pending">Pending</option>
@@ -852,7 +854,7 @@ export default function Hotspot() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {vLoading && <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">Memuat…</td></tr>}
-                  {vouchers?.map((v) => (
+                  {vouchers?.slice((voucherPage - 1) * PAGE_SIZE, voucherPage * PAGE_SIZE).map((v) => (
                     <tr key={v.id} className="hover:bg-slate-50">
                       <td className="px-4 py-3 font-mono text-xs font-bold tracking-wider">{v.code}</td>
                       <td className="px-4 py-3">
@@ -886,6 +888,47 @@ export default function Hotspot() {
                 </tbody>
               </table>
             </div>
+            {/* Pagination */}
+            {vouchers && vouchers.length > PAGE_SIZE && (() => {
+              const totalPages = Math.ceil(vouchers.length / PAGE_SIZE);
+              return (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-sm">
+                  <span className="text-slate-400 text-xs">
+                    {(voucherPage - 1) * PAGE_SIZE + 1}–{Math.min(voucherPage * PAGE_SIZE, vouchers.length)} dari {vouchers.length} voucher
+                  </span>
+                  <div className="flex gap-1">
+                    <button
+                      className="px-2 py-1 rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50"
+                      disabled={voucherPage === 1}
+                      onClick={() => setVoucherPage(p => p - 1)}>
+                      ‹
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(p => p === 1 || p === totalPages || Math.abs(p - voucherPage) <= 1)
+                      .reduce<(number | '…')[]>((acc, p, i, arr) => {
+                        if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push('…');
+                        acc.push(p);
+                        return acc;
+                      }, [])
+                      .map((p, i) =>
+                        p === '…'
+                          ? <span key={`ellipsis-${i}`} className="px-2 py-1 text-slate-400">…</span>
+                          : <button key={p}
+                              className={`px-2.5 py-1 rounded border text-xs font-medium ${voucherPage === p ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                              onClick={() => setVoucherPage(p as number)}>
+                              {p}
+                            </button>
+                      )}
+                    <button
+                      className="px-2 py-1 rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50"
+                      disabled={voucherPage === totalPages}
+                      onClick={() => setVoucherPage(p => p + 1)}>
+                      ›
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
