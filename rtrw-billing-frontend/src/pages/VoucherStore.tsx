@@ -140,18 +140,9 @@ export default function VoucherStore() {
 
                 <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-3">
                   <div className="text-center">
-                    <p className="text-xs text-slate-400 mb-1">Kode Voucher</p>
-                    <p className="font-mono text-2xl font-bold tracking-widest text-slate-800">{voucherResult.code}</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-200">
-                    <div>
-                      <p className="text-xs text-slate-400">Username</p>
-                      <p className="font-mono font-bold text-slate-800">{voucherResult.username}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-400">Password</p>
-                      <p className="font-mono font-bold text-slate-800">{voucherResult.password}</p>
-                    </div>
+                    <p className="text-xs text-slate-400 mb-2">Kode Voucher Anda</p>
+                    <p className="font-mono text-2xl font-bold tracking-widest text-indigo-700">{voucherResult.code}</p>
+                    <p className="text-xs text-slate-400 mt-1">Gunakan kode ini sebagai username &amp; password</p>
                   </div>
                   {voucherResult.packageName && (
                     <div className="pt-2 border-t border-slate-200">
@@ -169,20 +160,20 @@ export default function VoucherStore() {
                   <ol className="list-decimal list-inside space-y-1 text-xs">
                     <li>Hubungkan perangkat ke jaringan WiFi</li>
                     <li>Buka browser, ketik alamat apapun</li>
-                    <li>Anda akan diarahkan ke halaman login hotspot</li>
-                    <li>Masukkan <strong>username</strong> dan <strong>password</strong> di atas</li>
-                    <li>Klik Login — internet langsung aktif!</li>
+                    <li>Anda akan diarahkan ke halaman login</li>
+                    <li>Masukkan <strong>kode voucher</strong> di atas</li>
+                    <li>Klik "Gunakan Voucher" — internet langsung aktif!</li>
                   </ol>
                 </div>
 
                 <button
                   className="w-full text-sm py-2 rounded-lg border border-slate-300 flex items-center justify-center gap-2 hover:bg-slate-50"
                   onClick={() => {
-                    navigator.clipboard.writeText(`Username: ${voucherResult.username}\nPassword: ${voucherResult.password}`);
-                    alert('Disalin!');
+                    navigator.clipboard.writeText(voucherResult.code);
+                    alert('Kode disalin!');
                   }}
                 >
-                  <Copy size={14} /> Salin username & password
+                  <Copy size={14} /> Salin kode voucher
                 </button>
               </div>
             ) : (

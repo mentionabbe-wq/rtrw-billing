@@ -78,9 +78,10 @@ h2{margin:0 0 8px;font-size:18px} .code{font-size:24px;font-weight:bold;letter-s
 p{margin:4px 0;font-size:12px} @media print{button{display:none}}</style></head>
 <body><div class="box"><h2>🌐 Voucher Internet</h2>
 <p>${voucher.packageName ?? ''} &bull; ${voucher.durationMinutes ? fmtDuration(voucher.durationMinutes) : ''}</p>
+<p style="font-size:11px;margin-bottom:6px">Kode Voucher:</p>
 <div class="code">${voucher.code}</div>
-<p style="margin-top:10px;font-size:11px">Username: <b>${voucher.username}</b></p>
-<p>Harga: ${rupiah(voucher.amount)}</p>
+<p style="margin-top:8px;font-size:11px;color:#555">Masukkan kode ini di halaman login WiFi</p>
+<p style="margin-top:6px;font-size:11px">Harga: ${rupiah(voucher.amount)}</p>
 </div><br><button onclick="window.print()">Cetak</button>
 <script>window.onload=()=>window.print()<\/script></body></html>`);
     w.document.close();
@@ -1023,10 +1024,7 @@ export default function Hotspot() {
             <div className="overflow-y-auto flex-1 border rounded-lg divide-y text-sm">
               {generatedVouchers.map((v) => (
                 <div key={v.code} className="px-4 py-2 flex items-center justify-between gap-4">
-                  <div>
-                    <span className="font-mono font-bold tracking-wider text-slate-800">{v.code}</span>
-                    <span className="text-xs text-slate-400 ml-2">pass: {v.password}</span>
-                  </div>
+                  <span className="font-mono font-bold tracking-wider text-slate-800">{v.code}</span>
                   <span className="text-xs text-slate-400 shrink-0">{v.packageName}</span>
                 </div>
               ))}
@@ -1034,7 +1032,7 @@ export default function Hotspot() {
             <div className="flex gap-2">
               <button className="flex-1 btn-ghost text-sm"
                 onClick={() => {
-                  const text = generatedVouchers.map((v) => `${v.code} | ${v.username} | ${v.password} | ${v.packageName}`).join('\n');
+                  const text = generatedVouchers.map((v) => `${v.code} | ${v.packageName}`).join('\n');
                   navigator.clipboard.writeText(text).then(() => alert('Disalin ke clipboard!'));
                 }}>
                 Salin Semua

@@ -254,8 +254,8 @@ export class HotspotService {
 
     for (let i = 0; i < count; i++) {
       const code = this.genCode();
-      const username = code.replace(/-/g, '');
-      const password = this.genPassword();
+      const username = code;
+      const password = code;
       const passwordEnc = this.crypto.encrypt(password) as Buffer;
 
       const v = this.vouchers.create();
@@ -295,8 +295,8 @@ export class HotspotService {
     const pkg = await this.pkgs.findOneOrFail({ where: { id: dto.packageId } });
 
     const code = this.genCode();
-    const username = code.replace(/-/g, '');
-    const password = this.genPassword();
+    const username = code;
+    const password = code;
     const passwordEnc = this.crypto.encrypt(password) as Buffer;
     const buyerPhoneEnc = dto.buyerPhone ? this.crypto.encrypt(dto.buyerPhone) as Buffer : null;
 
