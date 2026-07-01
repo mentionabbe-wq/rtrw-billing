@@ -363,7 +363,7 @@ export class MikrotikService {
     }
   }
 
-  /** Daftar hotspot user profile di router. */
+  /** Daftar hotspot user profile di router. Lempar error asli dari RouterOS agar bisa ditampilkan. */
   async listHotspotProfiles(router: Router): Promise<any[]> {
     const conn = await this.connect(router);
     try {
@@ -375,6 +375,11 @@ export class MikrotikService {
         sessionTimeout: r['session-timeout'] ?? '',
         sharedUsers: r['shared-users'] ?? '1',
       }));
+    } catch (e: any) {
+      // Tangkap error RouterOS (mis. "no such command", hotspot tidak terinstall)
+      // dan re-throw dengan pesan yang lebih jelas
+      const msg: string = e?.message ?? String(e);
+      throw new Error(`Mikrotik [${router.name}]: ${msg}`);
     } finally {
       conn.close();
     }

@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { HotspotPackage, HotspotVoucher, Router } from '@database/entities';
@@ -120,7 +120,12 @@ export class HotspotService {
   /** Baca semua hotspot user profile dari Mikrotik (untuk modal import). */
   async listMikrotikProfiles(routerId: string) {
     const router = await this.routers.findOneOrFail({ where: { id: routerId } });
-    const profiles = await this.mikrotik.listHotspotProfiles(router);
+    let profiles: any[];
+    try {
+      profiles = await this.mikrotik.listHotspotProfiles(router);
+    } catch (e: any) {
+      throw new BadRequestException(e.message ?? 'Gagal membaca profil dari Mikrotik');
+    }
     const existing = await this.pkgs.find();
     const existingProfileNames = new Set(existing.map((p) => p.mikrotikProfile));
 
