@@ -363,26 +363,75 @@ export class MikrotikService {
     }
   }
 
-  /** Daftar hotspot user profile di router. Lempar error asli dari RouterOS agar bisa ditampilkan. */
+  /** Daftar hotspot user profile di router. Coba beberapa path untuk kompatibilitas versi RouterOS. */
   async listHotspotProfiles(router: Router): Promise<any[]> {
     const conn = await this.connect(router);
     try {
-      const rows = await conn.write('/ip/hotspot/user-profile/print');
-      this.logger.debug(`listHotspotProfiles ${router.name}: ${rows.length} rows`);
-      return rows.map((r) => ({
+      // Cek hotspot server dulu — konfirmasi fitur hotspot aktif
+      let servers: any[] = [];
+      try {
+        servers = await conn.write('/ip/hotspot/print');
+      } catch {
+        throw new Error(`Hotspot tidak ditemukan di router ini. Jalankan /ip hotspot setup terlebih dahulu.`);
+      }
+
+      if (servers.length === 0) {
+        throw new Error(`Hotspot belum dikonfigurasi (tidak ada hotspot server aktif).`);
+      }
+
+      // Coba path standar user-profile
+      try {
+        const rows = await conn.write('/ip/hotspot/user-profile/print');
+        this.logger.debug(`listHotspotProfiles ${router.name}: ${rows.length} rows via user-profile`);
+        return rows.map((r) => ({
+          name: r.name ?? r['.id'],
+          rateLimit: r['rate-limit'] ?? '',
+          sessionTimeout: r['session-timeout'] ?? '',
+          sharedUsers: r['shared-users'] ?? '1',
+        }));
+      } catch (e1: any) {
+        this.logger.warn(`user-profile path gagal: ${e1.message}, coba path lain`);
+      }
+
+      // Fallback: coba path tanpa 'user-'
+      const rows2 = await conn.write('/ip/hotspot/profile/print');
+      this.logger.debug(`listHotspotProfiles ${router.name}: ${rows2.length} rows via profile`);
+      return rows2.map((r) => ({
         name: r.name ?? r['.id'],
         rateLimit: r['rate-limit'] ?? '',
         sessionTimeout: r['session-timeout'] ?? '',
         sharedUsers: r['shared-users'] ?? '1',
       }));
     } catch (e: any) {
-      // Tangkap error RouterOS (mis. "no such command", hotspot tidak terinstall)
-      // dan re-throw dengan pesan yang lebih jelas
       const msg: string = e?.message ?? String(e);
       throw new Error(`Mikrotik [${router.name}]: ${msg}`);
     } finally {
       conn.close();
     }
+  }
+
+  /** Buat/update hotspot user profile — coba kedua path. */
+  private async writeHotspotProfile(
+    conn: RouterOSAPI,
+    name: string,
+    setParams: string[],
+    addParams: string[],
+  ): Promise<void> {
+    // Coba user-profile dulu, fallback ke profile
+    for (const base of ['/ip/hotspot/user-profile', '/ip/hotspot/profile']) {
+      try {
+        const existing = await conn.write(`${base}/print`, [`?name=${name}`]);
+        if (existing.length) {
+          await conn.write(`${base}/set`, [`=.id=${existing[0]['.id']}`, ...setParams]);
+        } else {
+          await conn.write(`${base}/add`, [`=name=${name}`, ...addParams]);
+        }
+        return;
+      } catch {
+        // coba path berikutnya
+      }
+    }
+    throw new Error(`Tidak dapat menyimpan profil — /ip/hotspot/user-profile dan /ip/hotspot/profile keduanya gagal`);
   }
 
   /**
@@ -397,22 +446,13 @@ export class MikrotikService {
     sharedUsers?: string,
   ): Promise<void> {
     const conn = await this.connect(router);
+    const setParams = [
+      ...(rateLimit ? [`=rate-limit=${rateLimit}`] : []),
+      ...(sessionTimeout ? [`=session-timeout=${sessionTimeout}`] : []),
+      ...(sharedUsers ? [`=shared-users=${sharedUsers}`] : []),
+    ];
     try {
-      const existing = await conn.write('/ip/hotspot/user-profile/print', [`?name=${name}`]);
-      const params: string[] = [
-        `=name=${name}`,
-        ...(rateLimit ? [`=rate-limit=${rateLimit}`] : []),
-        ...(sessionTimeout ? [`=session-timeout=${sessionTimeout}`] : []),
-        ...(sharedUsers ? [`=shared-users=${sharedUsers}`] : []),
-      ];
-      if (existing.length) {
-        await conn.write('/ip/hotspot/user-profile/set', [
-          `=.id=${existing[0]['.id']}`,
-          ...params.slice(1),
-        ]);
-      } else {
-        await conn.write('/ip/hotspot/user-profile/add', params);
-      }
+      await this.writeHotspotProfile(conn, name, setParams, setParams);
     } finally {
       conn.close();
     }
