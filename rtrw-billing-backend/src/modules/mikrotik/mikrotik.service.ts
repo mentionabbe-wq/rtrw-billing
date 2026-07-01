@@ -456,6 +456,19 @@ export class MikrotikService {
     }
   }
 
+  /** Jumlah user hotspot yang sedang terkoneksi dari /ip/hotspot/active. */
+  async countActiveHotspotSessions(router: Router): Promise<number> {
+    const conn = await this.connect(router);
+    try {
+      const rows = await conn.write('/ip/hotspot/active/print');
+      return rows.length;
+    } catch {
+      return 0;
+    } finally {
+      conn.close();
+    }
+  }
+
   /** Liveness check used by the scheduler to update router.status. */
   async ping(router: Router): Promise<boolean> {
     try {

@@ -234,13 +234,43 @@ export class HotspotService {
   }
 
   async getStats() {
-    const [total, active, pending, voidCount] = await Promise.all([
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const [total, active, pending, voidCount, revTotal, revMonth] = await Promise.all([
       this.vouchers.count(),
       this.vouchers.count({ where: { status: 'active' } }),
       this.vouchers.count({ where: { status: 'pending' } }),
       this.vouchers.count({ where: { status: 'void' } }),
+      this.vouchers.createQueryBuilder('v')
+        .select('COALESCE(SUM(v.amount::numeric), 0)', 'sum')
+        .where('v.status = :s', { s: 'active' })
+        .getRawOne(),
+      this.vouchers.createQueryBuilder('v')
+        .select('COALESCE(SUM(v.amount::numeric), 0)', 'sum')
+        .where('v.status = :s', { s: 'active' })
+        .andWhere('v.created_at >= :start', { start: startOfMonth })
+        .getRawOne(),
     ]);
-    return { total, active, pending, void: voidCount };
+
+    const allRouters = await this.routers.find();
+    const sessionCounts = await Promise.allSettled(
+      allRouters.map((r) => this.mikrotik.countActiveHotspotSessions(r)),
+    );
+    const connected = sessionCounts.reduce(
+      (sum, r) => sum + (r.status === 'fulfilled' ? r.value : 0), 0,
+    );
+
+    return {
+      total,
+      active,
+      pending,
+      void: voidCount,
+      connected,
+      revenueTotal: Number(revTotal?.sum ?? 0),
+      revenueThisMonth: Number(revMonth?.sum ?? 0),
+    };
   }
 
   /**

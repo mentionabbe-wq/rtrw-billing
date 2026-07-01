@@ -49,6 +49,9 @@ interface Stats {
   active: number;
   pending: number;
   void: number;
+  connected: number;
+  revenueTotal: number;
+  revenueThisMonth: number;
 }
 
 const rupiah = (v: string) =>
@@ -746,11 +749,11 @@ export default function Hotspot() {
         </h1>
       </div>
 
-      {/* Stats */}
+      {/* Stats — baris atas: voucher */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: 'Total Voucher', val: stats?.total ?? '—', color: 'text-slate-700' },
-          { label: 'Aktif', val: stats?.active ?? '—', color: 'text-emerald-600' },
+          { label: 'Voucher Aktif', val: stats?.active ?? '—', color: 'text-emerald-600' },
           { label: 'Pending Bayar', val: stats?.pending ?? '—', color: 'text-amber-600' },
           { label: 'Void', val: stats?.void ?? '—', color: 'text-slate-400' },
         ].map((s) => (
@@ -759,6 +762,44 @@ export default function Hotspot() {
             <p className={`text-2xl font-bold mt-1 ${s.color}`}>{s.val}</p>
           </div>
         ))}
+      </div>
+
+      {/* Stats — baris bawah: koneksi live + penghasilan */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="card p-4 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-full bg-sky-50 flex items-center justify-center shrink-0">
+            <span className="text-sky-500 text-lg font-bold">⚡</span>
+          </div>
+          <div>
+            <p className="text-xs text-slate-400">Terkoneksi Sekarang</p>
+            <p className="text-2xl font-bold text-sky-600">{stats?.connected ?? '—'}</p>
+            <p className="text-xs text-slate-400 mt-0.5">user aktif di Mikrotik</p>
+          </div>
+        </div>
+        <div className="card p-4 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center shrink-0">
+            <span className="text-indigo-500 text-lg">📅</span>
+          </div>
+          <div>
+            <p className="text-xs text-slate-400">Penghasilan Bulan Ini</p>
+            <p className="text-xl font-bold text-indigo-600">
+              {stats != null ? rupiah(String(stats.revenueThisMonth)) : '—'}
+            </p>
+            <p className="text-xs text-slate-400 mt-0.5">voucher aktif bulan ini</p>
+          </div>
+        </div>
+        <div className="card p-4 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center shrink-0">
+            <span className="text-emerald-500 text-lg">💰</span>
+          </div>
+          <div>
+            <p className="text-xs text-slate-400">Total Penghasilan</p>
+            <p className="text-xl font-bold text-emerald-600">
+              {stats != null ? rupiah(String(stats.revenueTotal)) : '—'}
+            </p>
+            <p className="text-xs text-slate-400 mt-0.5">semua voucher aktif</p>
+          </div>
+        </div>
       </div>
 
       {/* Tabs */}
