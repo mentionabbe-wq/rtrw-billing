@@ -102,7 +102,7 @@ function GenerateModal({
   onClose: () => void;
   onDone: (rows: any[]) => void;
 }) {
-  const [form, setForm] = useState({ packageId: packages[0]?.id ?? '', routerId: routers[0]?.id ?? '', count: 5 });
+  const [form, setForm] = useState({ packageId: packages[0]?.id ?? '', routerId: routers[0]?.id ?? '', count: 1 });
 
   const gen = useMutation({
     mutationFn: () => api.post('/hotspot/vouchers/generate', {
