@@ -190,7 +190,8 @@ function PackageModal({
     onSuccess: () => { onSaved(); onClose(); },
   });
 
-  const profilesFailed = profilesQ.isError || (profilesQ.isFetched && profilesQ.data?.length === 0);
+  const profilesFailed = profilesQ.isError;
+  const profilesEmpty = !profilesQ.isLoading && !profilesQ.isError && profilesQ.isFetched && profilesQ.data?.length === 0;
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4">
@@ -243,7 +244,7 @@ function PackageModal({
               </p>
             )}
 
-            {!profilesQ.isLoading && !profilesFailed && (
+            {!profilesQ.isLoading && !profilesFailed && !profilesEmpty && (
               <select className="input" value={form.mikrotikProfile}
                 onChange={(e) => {
                   const p = profilesQ.data?.find((x) => x.name === e.target.value);
@@ -263,13 +264,25 @@ function PackageModal({
               </select>
             )}
 
-            {profilesFailed && (
-              <>
-                <p className="text-xs text-amber-600">Tidak dapat membaca profil dari Mikrotik, isi manual:</p>
+            {(profilesFailed || profilesEmpty) && (
+              <div className="space-y-1">
+                {profilesFailed && (
+                  <p className="text-xs text-red-500">
+                    Error: {(profilesQ.error as any)?.response?.data?.message ?? (profilesQ.error as any)?.message ?? 'Gagal konek ke Mikrotik'}
+                    {' '}<button className="underline" onClick={() => profilesQ.refetch()}>Coba lagi</button>
+                  </p>
+                )}
+                {profilesEmpty && (
+                  <p className="text-xs text-amber-600">
+                    Tidak ada profil ditemukan di router ini.{' '}
+                    <button className="underline" onClick={() => profilesQ.refetch()}>Muat ulang</button>
+                  </p>
+                )}
+                <label className="text-xs text-slate-500">Isi nama profil manual:</label>
                 <input type="text" className="input" placeholder="default"
                   value={form.mikrotikProfile}
                   onChange={(e) => setForm({ ...form, mikrotikProfile: e.target.value })} />
-              </>
+              </div>
             )}
 
             {selectedProfile && (

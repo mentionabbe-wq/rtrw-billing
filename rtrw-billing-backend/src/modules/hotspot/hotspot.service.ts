@@ -125,7 +125,7 @@ export class HotspotService {
     const existingProfileNames = new Set(existing.map((p) => p.mikrotikProfile));
 
     return profiles
-      .filter((p) => p.name !== 'default' || profiles.length === 1)
+      .filter((p) => !!p.name)
       .map((p) => ({
         name: p.name,
         rateLimit: p.rateLimit,

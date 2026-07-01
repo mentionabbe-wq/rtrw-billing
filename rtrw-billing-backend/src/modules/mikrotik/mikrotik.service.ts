@@ -363,23 +363,20 @@ export class MikrotikService {
     }
   }
 
-  /** Daftar hotspot user profile di router. Kembalikan [] jika hotspot tidak aktif. */
+  /** Daftar hotspot user profile di router. */
   async listHotspotProfiles(router: Router): Promise<any[]> {
-    let conn: RouterOSAPI | null = null;
+    const conn = await this.connect(router);
     try {
-      conn = await this.connect(router);
       const rows = await conn.write('/ip/hotspot/user-profile/print');
+      this.logger.debug(`listHotspotProfiles ${router.name}: ${rows.length} rows`);
       return rows.map((r) => ({
-        name: r.name,
+        name: r.name ?? r['.id'],
         rateLimit: r['rate-limit'] ?? '',
         sessionTimeout: r['session-timeout'] ?? '',
         sharedUsers: r['shared-users'] ?? '1',
       }));
-    } catch (e) {
-      this.logger.warn(`listHotspotProfiles ${router.name}: ${(e as Error).message}`);
-      return [];
     } finally {
-      conn?.close();
+      conn.close();
     }
   }
 
