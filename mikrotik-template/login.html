@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#4f46e5">
+<title>Login WiFi</title>
+<style>
+/* ── Reset ── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ── Body ── */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  min-height: 100vh;
+  background: linear-gradient(160deg, #312e81 0%, #4f46e5 50%, #7c3aed 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+/* ── Card ── */
+.card {
+  background: #fff;
+  border-radius: 24px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: 0 32px 80px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.1);
+  overflow: hidden;
+}
+
+/* ── Header ── */
+.header {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  padding: 32px 24px 28px;
+  text-align: center;
+  color: #fff;
+}
+.header .icon {
+  width: 64px; height: 64px;
+  background: rgba(255,255,255,.15);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 16px;
+  backdrop-filter: blur(4px);
+}
+.header .icon svg { width: 34px; height: 34px; }
+.header h1 {
+  font-size: 20px; font-weight: 700; letter-spacing: -.3px;
+  margin-bottom: 4px;
+}
+.header p { font-size: 13px; opacity: .8; }
+
+/* ── Body ── */
+.body { padding: 28px 24px 24px; }
+
+/* ── Error ── */
+.error-box {
+  background: #fef2f2; border: 1px solid #fecaca;
+  border-radius: 12px; padding: 12px 14px;
+  margin-bottom: 18px;
+  display: flex; align-items: flex-start; gap: 10px;
+}
+.error-box .err-icon { flex-shrink: 0; margin-top: 1px; }
+.error-box p { color: #b91c1c; font-size: 13px; line-height: 1.4; }
+
+/* ── Form ── */
+.form-group { margin-bottom: 14px; }
+.form-group label {
+  display: block; font-size: 12px; font-weight: 600;
+  color: #374151; margin-bottom: 6px;
+}
+.form-group input {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 12px;
+  font-size: 15px; color: #111827;
+  background: #f9fafb;
+  outline: none;
+  transition: border-color .2s, background .2s, box-shadow .2s;
+  -webkit-appearance: none;
+}
+.form-group input:focus {
+  border-color: #4f46e5;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(79,70,229,.12);
+}
+.form-group input::placeholder { color: #9ca3af; }
+
+/* ── Buttons ── */
+.btn-login {
+  width: 100%; padding: 14px;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: #fff; font-size: 15px; font-weight: 600;
+  border: none; border-radius: 12px; cursor: pointer;
+  margin-top: 6px; margin-bottom: 14px;
+  box-shadow: 0 4px 14px rgba(79,70,229,.4);
+  transition: opacity .2s, transform .1s;
+  letter-spacing: .2px;
+  -webkit-appearance: none;
+}
+.btn-login:active { opacity: .9; transform: scale(.99); }
+
+.divider {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 14px;
+}
+.divider::before, .divider::after {
+  content: ''; flex: 1; height: 1px; background: #e5e7eb;
+}
+.divider span { font-size: 12px; color: #9ca3af; white-space: nowrap; }
+
+.btn-voucher {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; padding: 13px;
+  background: #f5f3ff; color: #4f46e5;
+  font-size: 14px; font-weight: 600;
+  border: 1.5px solid #c4b5fd;
+  border-radius: 12px; text-decoration: none;
+  cursor: pointer; transition: background .2s, border-color .2s;
+  -webkit-appearance: none;
+}
+.btn-voucher:active { background: #ede9fe; }
+.btn-voucher svg { width: 17px; height: 17px; flex-shrink: 0; }
+
+/* ── Footer ── */
+.footer {
+  text-align: center; padding: 0 24px 20px;
+  font-size: 11px; color: #9ca3af;
+}
+.footer a { color: #6366f1; text-decoration: none; }
+</style>
+</head>
+<body>
+
+<div class="card">
+
+  <!-- ── Header ── -->
+  <div class="header">
+    <div class="icon">
+      <!-- WiFi icon -->
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+        <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+        <circle cx="12" cy="20" r="1" fill="white" stroke="none"/>
+      </svg>
+    </div>
+    <!-- GANTI: nama perusahaan/RT/RW Anda -->
+    <h1>RT/RW Net Anda</h1>
+    <p>Masukkan username &amp; password voucher</p>
+  </div>
+
+  <!-- ── Body ── -->
+  <div class="body">
+
+    <!-- Error dari Mikrotik -->
+    $(if error)
+    <div class="error-box">
+      <span class="err-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </span>
+      <p>$(error)</p>
+    </div>
+    $(endif)
+
+    <!-- Form login -->
+    <form action="$(link-login-only)" method="post" autocomplete="off">
+      <input type="hidden" name="dst" value="$(link-orig)">
+
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input id="username" type="text" name="username"
+               value="$(username)" placeholder="Masukkan username"
+               autocomplete="username" autocapitalize="none" autocorrect="off">
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input id="password" type="password" name="password"
+               placeholder="Masukkan password"
+               autocomplete="current-password">
+      </div>
+
+      <button class="btn-login" type="submit">Masuk ke Internet</button>
+    </form>
+
+    <div class="divider"><span>atau</span></div>
+
+    <!--
+      GANTI "http://192.168.1.1:3000" dengan alamat IP/domain server billing Anda.
+      Contoh: http://192.168.88.200:3000  atau  http://billing.domain.com
+    -->
+    <a class="btn-voucher" href="http://GANTI-IP-SERVER:3000/voucher">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="6" width="20" height="12" rx="2"/>
+        <line x1="2" y1="12" x2="22" y2="12"/>
+        <line x1="6" y1="12" x2="6" y2="18"/>
+        <line x1="18" y1="12" x2="18" y2="18"/>
+      </svg>
+      Beli Voucher Online
+    </a>
+
+  </div><!-- /body -->
+
+  <!-- ── Footer ── -->
+  <div class="footer">
+    Butuh bantuan? Hubungi admin jaringan Anda
+  </div>
+
+</div><!-- /card -->
+
+</body>
+</html>
