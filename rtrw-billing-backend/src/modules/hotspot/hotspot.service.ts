@@ -478,7 +478,7 @@ export class HotspotService {
         v.passwordEnc = passwordEnc;
         v.routerId = routerId;
         v.status = u.disabled ? 'void' : 'active';
-        v.buyerName = u.comment || null;
+        v.buyerName = null;
         if (pkg) {
           v.packageId = pkg.id;
           v.amount = pkg.price;
