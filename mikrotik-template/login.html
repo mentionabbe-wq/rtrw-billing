@@ -72,23 +72,31 @@ body {
   display: block; font-size: 12px; font-weight: 600;
   color: #374151; margin-bottom: 6px;
 }
+.voucher-wrap {
+  position: relative;
+}
+.voucher-wrap svg {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  width: 18px; height: 18px; color: #6366f1; pointer-events: none;
+}
 .form-group input {
   width: 100%;
-  padding: 13px 14px;
+  padding: 13px 14px 13px 42px;
   border: 1.5px solid #e5e7eb;
   border-radius: 12px;
-  font-size: 15px; color: #111827;
+  font-size: 16px; color: #111827;
   background: #f9fafb;
   outline: none;
   transition: border-color .2s, background .2s, box-shadow .2s;
   -webkit-appearance: none;
+  letter-spacing: .5px;
 }
 .form-group input:focus {
   border-color: #4f46e5;
   background: #fff;
   box-shadow: 0 0 0 3px rgba(79,70,229,.12);
 }
-.form-group input::placeholder { color: #9ca3af; }
+.form-group input::placeholder { color: #9ca3af; letter-spacing: 0; }
 
 /* ── Buttons ── */
 .btn-login {
@@ -131,7 +139,6 @@ body {
   text-align: center; padding: 0 24px 20px;
   font-size: 11px; color: #9ca3af;
 }
-.footer a { color: #6366f1; text-decoration: none; }
 </style>
 </head>
 <body>
@@ -141,7 +148,6 @@ body {
   <!-- ── Header ── -->
   <div class="header">
     <div class="icon">
-      <!-- WiFi icon -->
       <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
         <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
@@ -149,9 +155,8 @@ body {
         <circle cx="12" cy="20" r="1" fill="white" stroke="none"/>
       </svg>
     </div>
-    <!-- GANTI: nama perusahaan/RT/RW Anda -->
-    <h1>RT/RW Net Anda</h1>
-    <p>Masukkan username &amp; password voucher</p>
+    <h1>Afsha Net</h1>
+    <p>Masukkan kode voucher untuk terhubung</p>
   </div>
 
   <!-- ── Body ── -->
@@ -169,39 +174,42 @@ body {
     </div>
     $(endif)
 
-    <!-- Form login -->
-    <form action="$(link-login-only)" method="post" autocomplete="off">
+    <!-- Form login — hanya kode voucher -->
+    <form id="loginForm" action="$(link-login-only)" method="post" autocomplete="off">
       <input type="hidden" name="dst" value="$(link-orig)">
+      <!-- password diisi otomatis sama dengan kode voucher via JS -->
+      <input type="hidden" name="password" id="passwordField">
 
       <div class="form-group">
-        <label for="username">Username</label>
-        <input id="username" type="text" name="username"
-               value="$(username)" placeholder="Masukkan username"
-               autocomplete="username" autocapitalize="none" autocorrect="off">
+        <label for="voucher">Kode Voucher</label>
+        <div class="voucher-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="6" width="20" height="12" rx="2"/>
+            <line x1="2" y1="12" x2="22" y2="12"/>
+            <line x1="6" y1="12" x2="6" y2="18"/>
+            <line x1="18" y1="12" x2="18" y2="18"/>
+          </svg>
+          <input id="voucher" type="text" name="username"
+                 value="$(username)" placeholder="Contoh: ABC123"
+                 autocomplete="off" autocapitalize="characters" autocorrect="off"
+                 spellcheck="false" inputmode="text">
+        </div>
       </div>
 
-      <div class="form-group">
-        <label for="password">Password</label>
-        <input id="password" type="password" name="password"
-               placeholder="Masukkan password"
-               autocomplete="current-password">
-      </div>
-
-      <button class="btn-login" type="submit">Masuk ke Internet</button>
+      <button class="btn-login" type="submit">Gunakan Voucher</button>
     </form>
 
-    <div class="divider"><span>atau</span></div>
+    <div class="divider"><span>belum punya voucher?</span></div>
 
     <!--
-      GANTI "http://192.168.1.1:3000" dengan alamat IP/domain server billing Anda.
-      Contoh: http://192.168.88.200:3000  atau  http://billing.domain.com
+      GANTI IP di bawah dengan IP/domain server billing Anda.
+      JANGAN LUPA tambahkan IP ini ke Walled Garden Mikrotik agar bisa diakses sebelum login.
     -->
-    <a class="btn-voucher" href="http://GANTI-IP-SERVER:3000/voucher">
+    <a class="btn-voucher" href="http://192.168.30.102:3000/voucher" target="_blank">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="2" y="6" width="20" height="12" rx="2"/>
-        <line x1="2" y1="12" x2="22" y2="12"/>
-        <line x1="6" y1="12" x2="6" y2="18"/>
-        <line x1="18" y1="12" x2="18" y2="18"/>
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="8" x2="12" y2="16"/>
+        <line x1="8" y1="12" x2="16" y2="12"/>
       </svg>
       Beli Voucher Online
     </a>
@@ -214,6 +222,21 @@ body {
   </div>
 
 </div><!-- /card -->
+
+<script>
+  // Salin kode voucher ke field password sebelum form dikirim
+  document.getElementById('loginForm').addEventListener('submit', function () {
+    var code = document.getElementById('voucher').value.trim();
+    document.getElementById('passwordField').value = code;
+  });
+
+  // Uppercase otomatis saat mengetik (opsional — hapus jika voucher lowercase)
+  document.getElementById('voucher').addEventListener('input', function () {
+    var pos = this.selectionStart;
+    this.value = this.value.toUpperCase();
+    this.setSelectionRange(pos, pos);
+  });
+</script>
 
 </body>
 </html>
