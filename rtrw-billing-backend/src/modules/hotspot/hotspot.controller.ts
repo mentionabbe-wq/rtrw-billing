@@ -143,4 +143,19 @@ export class HotspotController {
   }) {
     return this.svc.importPackagesFromProfiles(body.routerId, body.profiles);
   }
+
+  /** Buat / update profil langsung di Mikrotik dari aplikasi. */
+  @Post('admin/save-profile')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  saveProfile(@Body() body: {
+    routerIds: string[];
+    name: string;
+    rateLimit?: string;
+    sessionTimeout?: string;
+    sharedUsers?: string;
+  }) {
+    const { routerIds, ...dto } = body;
+    return this.svc.saveMikrotikProfile(routerIds, dto);
+  }
 }

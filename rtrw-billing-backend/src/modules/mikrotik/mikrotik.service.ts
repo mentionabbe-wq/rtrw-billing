@@ -389,6 +389,7 @@ export class MikrotikService {
     name: string,
     rateLimit?: string,
     sessionTimeout?: string,
+    sharedUsers?: string,
   ): Promise<void> {
     const conn = await this.connect(router);
     try {
@@ -397,6 +398,7 @@ export class MikrotikService {
         `=name=${name}`,
         ...(rateLimit ? [`=rate-limit=${rateLimit}`] : []),
         ...(sessionTimeout ? [`=session-timeout=${sessionTimeout}`] : []),
+        ...(sharedUsers ? [`=shared-users=${sharedUsers}`] : []),
       ];
       if (existing.length) {
         await conn.write('/ip/hotspot/user-profile/set', [

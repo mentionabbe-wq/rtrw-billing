@@ -327,6 +327,198 @@ function PackageModal({
   );
 }
 
+// ── Add/Edit Profile Modal ───────────────────────────────────────────────────
+function AddProfileModal({
+  routers, onClose, onDone,
+}: {
+  routers: Router[];
+  onClose: () => void;
+  onDone: (profileName: string) => void;
+}) {
+  const [form, setForm] = useState({
+    name: '',
+    uploadLimit: '',
+    downloadLimit: '',
+    durationHours: '',
+    durationMinutes: '',
+    sharedUsers: '1',
+  });
+  const [selectedRouters, setSelectedRouters] = useState<Set<string>>(
+    new Set(routers.map((r) => r.id)),
+  );
+  const [result, setResult] = useState<{ routerName: string; ok: boolean; error?: string }[] | null>(null);
+
+  const toMtTimeout = () => {
+    const h = parseInt(form.durationHours || '0');
+    const m = parseInt(form.durationMinutes || '0');
+    if (!h && !m) return undefined;
+    const totalMin = h * 60 + m;
+    const d = Math.floor(totalMin / 1440);
+    const rh = Math.floor((totalMin % 1440) / 60);
+    const rm = totalMin % 60;
+    const hms = `${String(rh).padStart(2, '0')}:${String(rm).padStart(2, '0')}:00`;
+    return d > 0 ? `${d}d${hms}` : hms;
+  };
+
+  const rateLimit = form.uploadLimit && form.downloadLimit
+    ? `${form.uploadLimit}/${form.downloadLimit}`
+    : (form.uploadLimit || form.downloadLimit) || undefined;
+
+  const saveMut = useMutation({
+    mutationFn: () => api.post('/hotspot/admin/save-profile', {
+      routerIds: Array.from(selectedRouters),
+      name: form.name,
+      rateLimit,
+      sessionTimeout: toMtTimeout(),
+      sharedUsers: form.sharedUsers !== '1' ? form.sharedUsers : undefined,
+    }),
+    onSuccess: (res) => setResult(res.data),
+  });
+
+  const toggleRouter = (id: string) =>
+    setSelectedRouters((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  if (result) {
+    const ok = result.filter((r) => r.ok);
+    const fail = result.filter((r) => !r.ok);
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+        <div className="card w-full max-w-sm p-6 space-y-4">
+          <h2 className="font-semibold text-emerald-700">Profil Disimpan</h2>
+          <div className="divide-y border rounded-lg text-sm overflow-hidden">
+            {ok.map((r) => (
+              <div key={r.routerName} className="flex items-center gap-2 px-4 py-2 text-emerald-700">
+                <span className="text-emerald-500">✓</span> {r.routerName}
+              </div>
+            ))}
+            {fail.map((r) => (
+              <div key={r.routerName} className="px-4 py-2 text-red-600">
+                <span className="font-medium">✗ {r.routerName}</span>
+                <p className="text-xs mt-0.5 text-red-500">{r.error}</p>
+              </div>
+            ))}
+          </div>
+          <button className="w-full btn-primary" onClick={() => onDone(form.name)}>Selesai</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="card w-full max-w-md flex flex-col max-h-[90vh]">
+        <div className="p-5 border-b">
+          <h2 className="font-semibold">Tambah / Edit Profil Mikrotik</h2>
+          <p className="text-xs text-slate-400 mt-0.5">Profil akan langsung disimpan ke router yang dipilih</p>
+        </div>
+
+        <div className="overflow-y-auto p-5 space-y-4">
+          {/* Nama */}
+          <div>
+            <label className="text-xs font-medium text-slate-600">Nama Profil <span className="text-red-400">*</span></label>
+            <input type="text" className="input mt-1" placeholder="1jam / 3jam / 1hari"
+              value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </div>
+
+          {/* Rate limit */}
+          <div>
+            <label className="text-xs font-medium text-slate-600">Rate Limit (bandwidth)</label>
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              <div>
+                <label className="text-xs text-slate-400">Upload</label>
+                <div className="flex">
+                  <input type="text" className="input rounded-r-none" placeholder="2M"
+                    value={form.uploadLimit} onChange={(e) => setForm({ ...form, uploadLimit: e.target.value })} />
+                  <span className="input rounded-l-none border-l-0 bg-slate-50 text-slate-400 text-xs px-2 flex items-center">bps</span>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">Download</label>
+                <div className="flex">
+                  <input type="text" className="input rounded-r-none" placeholder="5M"
+                    value={form.downloadLimit} onChange={(e) => setForm({ ...form, downloadLimit: e.target.value })} />
+                  <span className="input rounded-l-none border-l-0 bg-slate-50 text-slate-400 text-xs px-2 flex items-center">bps</span>
+                </div>
+              </div>
+            </div>
+            {rateLimit && (
+              <p className="text-xs text-slate-400 mt-1">Format Mikrotik: <code className="bg-slate-100 px-1 rounded">{rateLimit}</code></p>
+            )}
+          </div>
+
+          {/* Durasi */}
+          <div>
+            <label className="text-xs font-medium text-slate-600">Batas Waktu Sesi</label>
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              <div>
+                <label className="text-xs text-slate-400">Jam</label>
+                <input type="number" className="input" placeholder="0" min="0"
+                  value={form.durationHours} onChange={(e) => setForm({ ...form, durationHours: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">Menit</label>
+                <input type="number" className="input" placeholder="0" min="0" max="59"
+                  value={form.durationMinutes} onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })} />
+              </div>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              {toMtTimeout()
+                ? <>Format Mikrotik: <code className="bg-slate-100 px-1 rounded">{toMtTimeout()}</code></>
+                : 'Kosongkan = unlimited (tidak ada batas waktu)'}
+            </p>
+          </div>
+
+          {/* Shared users */}
+          <div>
+            <label className="text-xs font-medium text-slate-600">Jumlah Perangkat Bersamaan</label>
+            <select className="input mt-1" value={form.sharedUsers}
+              onChange={(e) => setForm({ ...form, sharedUsers: e.target.value })}>
+              {['1', '2', '3', '5', '10'].map((v) => (
+                <option key={v} value={v}>{v} perangkat</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Pilih router */}
+          <div>
+            <label className="text-xs font-medium text-slate-600">Terapkan ke Router</label>
+            <div className="mt-1 space-y-1 border rounded-lg p-2">
+              {routers.map((r) => (
+                <label key={r.id} className="flex items-center gap-2 text-sm cursor-pointer px-2 py-1 rounded hover:bg-slate-50">
+                  <input type="checkbox" checked={selectedRouters.has(r.id)}
+                    onChange={() => toggleRouter(r.id)} />
+                  <span>{r.name}</span>
+                  <span className={`text-xs ml-auto ${r.status === 'online' ? 'text-emerald-500' : 'text-slate-400'}`}>
+                    {r.status}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {saveMut.isError && (
+            <p className="text-sm text-red-500">{(saveMut.error as any)?.response?.data?.message ?? 'Gagal menyimpan'}</p>
+          )}
+        </div>
+
+        <div className="p-5 border-t flex gap-2">
+          <button className="flex-1 btn-ghost" onClick={onClose}>Batal</button>
+          <button className="flex-1 btn-primary"
+            disabled={saveMut.isPending || !form.name || selectedRouters.size === 0}
+            onClick={() => saveMut.mutate()}>
+            {saveMut.isPending ? <Loader2 size={15} className="animate-spin" /> : null}
+            Simpan ke Mikrotik
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Import Profiles Modal ─────────────────────────────────────────────────────
 function ImportProfilesModal({
   routers, onClose, onDone,
@@ -471,6 +663,7 @@ export default function Hotspot() {
   const [filterStatus, setFilterStatus] = useState('');
   const [showGenerate, setShowGenerate] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showAddProfile, setShowAddProfile] = useState(false);
   const [showSync, setShowSync] = useState(false);
   const [syncRouterId, setSyncRouterId] = useState('');
   const [syncResult, setSyncResult] = useState<any | null>(null);
@@ -640,6 +833,9 @@ export default function Hotspot() {
                 <button className="btn-ghost text-sm" onClick={() => setShowImport(true)}>
                   <RefreshCcw size={14} /> Import dari Mikrotik
                 </button>
+                <button className="btn-ghost text-sm" onClick={() => setShowAddProfile(true)}>
+                  <Plus size={14} /> Tambah Profil Mikrotik
+                </button>
                 <button className="btn-primary text-sm" onClick={() => { setEditPkg(undefined); setShowPkgModal(true); }}>
                   <Plus size={14} /> Tambah Paket
                 </button>
@@ -718,6 +914,19 @@ export default function Hotspot() {
       {/* Package Modal */}
       {showPkgModal && routers && (
         <PackageModal pkg={editPkg} routers={routers} onClose={() => setShowPkgModal(false)} onSaved={() => refetchPkg()} />
+      )}
+
+      {/* Add Profile Modal */}
+      {showAddProfile && routers && (
+        <AddProfileModal
+          routers={routers}
+          onClose={() => setShowAddProfile(false)}
+          onDone={(profileName) => {
+            setShowAddProfile(false);
+            // invalidate cache profil agar dropdown segar
+            qc.invalidateQueries({ queryKey: ['mt-profiles'] });
+          }}
+        />
       )}
 
       {/* Import Profiles Modal */}

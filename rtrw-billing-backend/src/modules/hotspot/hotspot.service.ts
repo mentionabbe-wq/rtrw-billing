@@ -135,6 +135,29 @@ export class HotspotService {
       }));
   }
 
+  /** Buat atau update profil di Mikrotik langsung dari aplikasi. */
+  async saveMikrotikProfile(
+    routerIds: string[],
+    dto: { name: string; rateLimit?: string; sessionTimeout?: string; sharedUsers?: string },
+  ) {
+    const allRouters = routerIds.length
+      ? await this.routers.findByIds(routerIds)
+      : await this.routers.find();
+
+    const results: { routerName: string; ok: boolean; error?: string }[] = [];
+    for (const router of allRouters) {
+      try {
+        await this.mikrotik.upsertHotspotProfile(
+          router, dto.name, dto.rateLimit, dto.sessionTimeout, dto.sharedUsers,
+        );
+        results.push({ routerName: router.name, ok: true });
+      } catch (e) {
+        results.push({ routerName: router.name, ok: false, error: (e as Error).message });
+      }
+    }
+    return results;
+  }
+
   /** Import profil Mikrotik yang dipilih sebagai paket baru (skip yang sudah ada). */
   async importPackagesFromProfiles(
     routerId: string,
