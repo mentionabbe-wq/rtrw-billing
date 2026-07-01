@@ -122,4 +122,25 @@ export class HotspotController {
   deletePackage(@Param('id') id: string) {
     return this.svc.deletePackage(Number(id));
   }
+
+  // ── Sinkron profil Mikrotik ──────────────────────────────────────────────────
+
+  /** Baca daftar hotspot user profile dari Mikrotik untuk dipilih sebelum import. */
+  @Get('admin/mikrotik-profiles/:routerId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'operator')
+  mikrotikProfiles(@Param('routerId') routerId: string) {
+    return this.svc.listMikrotikProfiles(routerId);
+  }
+
+  /** Import profil terpilih sebagai paket baru di DB. */
+  @Post('admin/import-profiles')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  importProfiles(@Body() body: {
+    routerId: string;
+    profiles: { name: string; rateLimit?: string; durationMinutes?: number; price?: number }[];
+  }) {
+    return this.svc.importPackagesFromProfiles(body.routerId, body.profiles);
+  }
 }

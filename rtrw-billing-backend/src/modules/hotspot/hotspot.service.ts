@@ -46,6 +46,43 @@ export class HotspotService {
     return d > 0 ? `${d}d${hms}` : hms;
   }
 
+  // ─── helpers ─────────────────────────────────────────────────────────────────
+
+  /** Parse session-timeout Mikrotik ("1d00:00:00" / "00:30:00") ke menit. null = unlimited. */
+  private parseMtDuration(s: string): number | null {
+    if (!s || s === '00:00:00') return null;
+    const dayMatch = s.match(/^(\d+)d(\d+):(\d+):(\d+)$/);
+    if (dayMatch) {
+      return parseInt(dayMatch[1]) * 1440 + parseInt(dayMatch[2]) * 60 + parseInt(dayMatch[3]);
+    }
+    const timeMatch = s.match(/^(\d+):(\d+):(\d+)$/);
+    if (timeMatch) {
+      return parseInt(timeMatch[1]) * 60 + parseInt(timeMatch[2]);
+    }
+    return null;
+  }
+
+  /** Konversi menit ke format session-timeout Mikrotik. */
+  private toMtSessionTimeout(minutes: number): string {
+    const d = Math.floor(minutes / 1440);
+    const h = Math.floor((minutes % 1440) / 60);
+    const m = minutes % 60;
+    const hms = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
+    return d > 0 ? `${d}d${hms}` : hms;
+  }
+
+  /** Push profile paket ke semua router yang online. */
+  private async pushProfileToAllRouters(pkg: HotspotPackage): Promise<void> {
+    if (!pkg.rateLimit) return;
+    const allRouters = await this.routers.find();
+    const sessionTimeout = this.toMtSessionTimeout(pkg.durationMinutes);
+    await Promise.allSettled(
+      allRouters.map((r) =>
+        this.mikrotik.upsertHotspotProfile(r, pkg.mikrotikProfile, pkg.rateLimit!, sessionTimeout),
+      ),
+    );
+  }
+
   // ─── packages ────────────────────────────────────────────────────────────────
 
   listPackages() {
@@ -57,17 +94,74 @@ export class HotspotService {
   }
 
   async createPackage(dto: Partial<HotspotPackage>) {
-    return this.pkgs.save(this.pkgs.create(dto));
+    const saved = await this.pkgs.save(this.pkgs.create(dto));
+    await this.pushProfileToAllRouters(saved).catch((e) =>
+      this.logger.warn(`pushProfile create: ${e.message}`),
+    );
+    return saved;
   }
 
   async updatePackage(id: number, dto: Partial<HotspotPackage>) {
     await this.pkgs.update(id, dto);
-    return this.pkgs.findOneOrFail({ where: { id } });
+    const updated = await this.pkgs.findOneOrFail({ where: { id } });
+    await this.pushProfileToAllRouters(updated).catch((e) =>
+      this.logger.warn(`pushProfile update: ${e.message}`),
+    );
+    return updated;
   }
 
   async deletePackage(id: number) {
     await this.pkgs.delete(id);
     return { deleted: true };
+  }
+
+  // ─── profile sync ────────────────────────────────────────────────────────────
+
+  /** Baca semua hotspot user profile dari Mikrotik (untuk modal import). */
+  async listMikrotikProfiles(routerId: string) {
+    const router = await this.routers.findOneOrFail({ where: { id: routerId } });
+    const profiles = await this.mikrotik.listHotspotProfiles(router);
+    const existing = await this.pkgs.find();
+    const existingProfileNames = new Set(existing.map((p) => p.mikrotikProfile));
+
+    return profiles
+      .filter((p) => p.name !== 'default' || profiles.length === 1)
+      .map((p) => ({
+        name: p.name,
+        rateLimit: p.rateLimit,
+        sessionTimeout: p.sessionTimeout,
+        durationMinutes: this.parseMtDuration(p.sessionTimeout),
+        alreadyImported: existingProfileNames.has(p.name),
+      }));
+  }
+
+  /** Import profil Mikrotik yang dipilih sebagai paket baru (skip yang sudah ada). */
+  async importPackagesFromProfiles(
+    routerId: string,
+    profiles: { name: string; rateLimit?: string; durationMinutes?: number; price?: number }[],
+  ) {
+    const router = await this.routers.findOneOrFail({ where: { id: routerId } });
+    const results: { name: string; action: 'created' | 'skipped' }[] = [];
+
+    for (const p of profiles) {
+      const existing = await this.pkgs.findOne({ where: { mikrotikProfile: p.name } });
+      if (existing) {
+        results.push({ name: p.name, action: 'skipped' });
+        continue;
+      }
+      const pkg = this.pkgs.create();
+      pkg.name = p.name;
+      pkg.mikrotikProfile = p.name;
+      pkg.rateLimit = p.rateLimit ?? null;
+      pkg.durationMinutes = p.durationMinutes ?? 1440;
+      pkg.price = String(p.price ?? 0);
+      pkg.isActive = true;
+      await this.pkgs.save(pkg);
+      results.push({ name: p.name, action: 'created' });
+    }
+
+    this.logger.log(`Import profiles from router=${router.name}: ${JSON.stringify(results)}`);
+    return results;
   }
 
   // ─── routers (public) ────────────────────────────────────────────────────────

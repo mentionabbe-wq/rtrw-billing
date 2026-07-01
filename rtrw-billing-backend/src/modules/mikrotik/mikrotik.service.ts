@@ -363,6 +363,53 @@ export class MikrotikService {
     }
   }
 
+  /** Daftar hotspot user profile di router. */
+  async listHotspotProfiles(router: Router): Promise<any[]> {
+    const conn = await this.connect(router);
+    try {
+      const rows = await conn.write('/ip/hotspot/user-profile/print');
+      return rows.map((r) => ({
+        name: r.name,
+        rateLimit: r['rate-limit'] ?? '',
+        sessionTimeout: r['session-timeout'] ?? '',
+        sharedUsers: r['shared-users'] ?? '1',
+      }));
+    } finally {
+      conn.close();
+    }
+  }
+
+  /**
+   * Buat atau update hotspot user profile di Mikrotik. Idempotent.
+   * sessionTimeout: format Mikrotik "01:00:00" atau "1d00:00:00" (kosong = unlimited)
+   */
+  async upsertHotspotProfile(
+    router: Router,
+    name: string,
+    rateLimit?: string,
+    sessionTimeout?: string,
+  ): Promise<void> {
+    const conn = await this.connect(router);
+    try {
+      const existing = await conn.write('/ip/hotspot/user-profile/print', [`?name=${name}`]);
+      const params: string[] = [
+        `=name=${name}`,
+        ...(rateLimit ? [`=rate-limit=${rateLimit}`] : []),
+        ...(sessionTimeout ? [`=session-timeout=${sessionTimeout}`] : []),
+      ];
+      if (existing.length) {
+        await conn.write('/ip/hotspot/user-profile/set', [
+          `=.id=${existing[0]['.id']}`,
+          ...params.slice(1),
+        ]);
+      } else {
+        await conn.write('/ip/hotspot/user-profile/add', params);
+      }
+    } finally {
+      conn.close();
+    }
+  }
+
   /** Daftar semua hotspot user di router (termasuk password plaintext utk sinkronisasi). */
   async listHotspotUsers(router: Router): Promise<any[]> {
     const conn = await this.connect(router);

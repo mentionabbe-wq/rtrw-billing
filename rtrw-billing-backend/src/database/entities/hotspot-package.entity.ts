@@ -19,6 +19,10 @@ export class HotspotPackage {
   @Column({ name: 'mikrotik_profile', default: 'default' })
   mikrotikProfile: string;
 
+  /** Rate limit Mikrotik format: "2M/2M" (upload/download). Opsional. */
+  @Column({ name: 'rate_limit', nullable: true })
+  rateLimit: string | null;
+
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 

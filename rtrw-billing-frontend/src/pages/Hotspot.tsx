@@ -12,7 +12,16 @@ interface HotspotPackage {
   durationMinutes: number;
   price: string;
   mikrotikProfile: string;
+  rateLimit: string | null;
   isActive: boolean;
+}
+
+interface MikrotikProfile {
+  name: string;
+  rateLimit: string;
+  sessionTimeout: string;
+  durationMinutes: number | null;
+  alreadyImported: boolean;
 }
 
 interface Voucher {
@@ -154,13 +163,14 @@ function PackageModal({ pkg, onClose, onSaved }: { pkg?: HotspotPackage; onClose
     durationMinutes: pkg?.durationMinutes ?? 1440,
     price: pkg?.price ?? '0',
     mikrotikProfile: pkg?.mikrotikProfile ?? 'default',
+    rateLimit: pkg?.rateLimit ?? '',
     isActive: pkg?.isActive ?? true,
   });
 
   const save = useMutation({
     mutationFn: () => isEdit
-      ? api.patch(`/hotspot/admin/packages/${pkg!.id}`, form)
-      : api.post('/hotspot/admin/packages', form),
+      ? api.patch(`/hotspot/admin/packages/${pkg!.id}`, { ...form, rateLimit: form.rateLimit || null })
+      : api.post('/hotspot/admin/packages', { ...form, rateLimit: form.rateLimit || null }),
     onSuccess: () => { onSaved(); onClose(); },
   });
 
@@ -174,12 +184,13 @@ function PackageModal({ pkg, onClose, onSaved }: { pkg?: HotspotPackage; onClose
             { label: 'Durasi (menit)', key: 'durationMinutes', type: 'number', placeholder: '1440' },
             { label: 'Harga (Rp)', key: 'price', type: 'number', placeholder: '8000' },
             { label: 'Profile Mikrotik', key: 'mikrotikProfile', type: 'text', placeholder: 'default' },
+            { label: 'Rate Limit (opsional, contoh: 2M/2M)', key: 'rateLimit', type: 'text', placeholder: '2M/2M' },
           ].map(({ label, key, type, placeholder }) => (
             <div key={key}>
               <label className="text-xs font-medium text-slate-600">{label}</label>
               <input type={type} className="input mt-1" placeholder={placeholder}
                 value={(form as any)[key]}
-                onChange={(e) => setForm({ ...form, [key]: type === 'number' ? e.target.value : e.target.value })} />
+                onChange={(e) => setForm({ ...form, [key]: e.target.value })} />
             </div>
           ))}
           <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -188,6 +199,11 @@ function PackageModal({ pkg, onClose, onSaved }: { pkg?: HotspotPackage; onClose
             Aktif (tampil di halaman beli voucher)
           </label>
         </div>
+        {form.rateLimit && (
+          <p className="text-xs text-indigo-600 bg-indigo-50 rounded-lg px-3 py-2">
+            Profile <strong>{form.mikrotikProfile}</strong> akan dibuat/diperbarui di semua router dengan rate limit <strong>{form.rateLimit}</strong>.
+          </p>
+        )}
         {save.isError && (
           <p className="text-sm text-red-600">{(save.error as any)?.response?.data?.message ?? 'Gagal menyimpan'}</p>
         )}
@@ -203,6 +219,142 @@ function PackageModal({ pkg, onClose, onSaved }: { pkg?: HotspotPackage; onClose
   );
 }
 
+// ── Import Profiles Modal ─────────────────────────────────────────────────────
+function ImportProfilesModal({
+  routers, onClose, onDone,
+}: {
+  routers: Router[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [routerId, setRouterId] = useState(routers[0]?.id ?? '');
+  const [selected, setSelected] = useState<Record<string, { price: string; durationMinutes: number }>>({});
+  const [importResult, setImportResult] = useState<{ name: string; action: string }[] | null>(null);
+
+  const profilesQ = useQuery<MikrotikProfile[]>({
+    queryKey: ['mt-profiles', routerId],
+    queryFn: async () => (await api.get(`/hotspot/admin/mikrotik-profiles/${routerId}`)).data,
+    enabled: !!routerId,
+  });
+
+  const importMut = useMutation({
+    mutationFn: () => api.post('/hotspot/admin/import-profiles', {
+      routerId,
+      profiles: Object.entries(selected).map(([name, v]) => ({
+        name,
+        rateLimit: profilesQ.data?.find((p) => p.name === name)?.rateLimit || undefined,
+        durationMinutes: v.durationMinutes,
+        price: Number(v.price),
+      })),
+    }),
+    onSuccess: (res) => setImportResult(res.data),
+  });
+
+  const toggle = (p: MikrotikProfile) => {
+    setSelected((prev) => {
+      const next = { ...prev };
+      if (next[p.name]) { delete next[p.name]; } else {
+        next[p.name] = { price: '0', durationMinutes: p.durationMinutes ?? 1440 };
+      }
+      return next;
+    });
+  };
+
+  if (importResult) {
+    const created = importResult.filter((r) => r.action === 'created').length;
+    const skipped = importResult.filter((r) => r.action === 'skipped').length;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+        <div className="card w-full max-w-sm p-6 space-y-4">
+          <h2 className="font-semibold text-emerald-700">Import Selesai</h2>
+          <div className="divide-y border rounded-lg text-sm overflow-hidden">
+            <div className="flex justify-between px-4 py-2">
+              <span className="text-slate-600">Paket dibuat</span>
+              <span className="text-emerald-600 font-semibold">{created}</span>
+            </div>
+            <div className="flex justify-between px-4 py-2">
+              <span className="text-slate-600">Sudah ada (dilewati)</span>
+              <span className="text-slate-400">{skipped}</span>
+            </div>
+          </div>
+          <button className="w-full btn-primary" onClick={onDone}>Selesai</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="card w-full max-w-lg p-6 space-y-4">
+        <h2 className="font-semibold flex items-center gap-2">
+          <RefreshCcw size={18} className="text-indigo-500" /> Import Paket dari Mikrotik
+        </h2>
+        <div>
+          <label className="text-xs font-medium text-slate-600">Baca dari Router</label>
+          <select className="input mt-1" value={routerId} onChange={(e) => { setRouterId(e.target.value); setSelected({}); }}>
+            {routers.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+        </div>
+        {profilesQ.isLoading && <p className="text-sm text-slate-400 text-center py-4">Memuat profil dari Mikrotik…</p>}
+        {profilesQ.isError && <p className="text-sm text-red-500">Gagal membaca profil Mikrotik.</p>}
+        {profilesQ.data && (
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {profilesQ.data.length === 0 && <p className="text-sm text-slate-400 text-center py-4">Tidak ada profil ditemukan.</p>}
+            {profilesQ.data.map((p) => (
+              <div key={p.name} className={`border rounded-lg p-3 transition ${p.alreadyImported ? 'opacity-50' : ''}`}>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input type="checkbox" className="mt-0.5" checked={!!selected[p.name]}
+                    disabled={p.alreadyImported}
+                    onChange={() => toggle(p)} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-semibold text-sm">{p.name}</span>
+                      {p.alreadyImported && <span className="badge bg-slate-100 text-slate-400 text-xs">sudah ada</span>}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-0.5">
+                      {p.rateLimit && <span className="mr-3">⚡ {p.rateLimit}</span>}
+                      {p.durationMinutes
+                        ? <span>⏱ {p.durationMinutes >= 1440 ? `${p.durationMinutes / 1440} hari` : `${p.durationMinutes / 60} jam`}</span>
+                        : <span>⏱ Unlimited</span>
+                      }
+                    </div>
+                  </div>
+                </label>
+                {selected[p.name] && (
+                  <div className="mt-2 pl-7 flex gap-3">
+                    <div className="flex-1">
+                      <label className="text-xs text-slate-500">Durasi (menit)</label>
+                      <input type="number" className="input mt-0.5 text-sm py-1" value={selected[p.name].durationMinutes}
+                        onChange={(e) => setSelected((prev) => ({ ...prev, [p.name]: { ...prev[p.name], durationMinutes: Number(e.target.value) } }))} />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-xs text-slate-500">Harga (Rp)</label>
+                      <input type="number" className="input mt-0.5 text-sm py-1" placeholder="0" value={selected[p.name].price}
+                        onChange={(e) => setSelected((prev) => ({ ...prev, [p.name]: { ...prev[p.name], price: e.target.value } }))} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {importMut.isError && (
+          <p className="text-sm text-red-500">{(importMut.error as any)?.response?.data?.message ?? 'Gagal import'}</p>
+        )}
+        <div className="flex gap-2">
+          <button className="flex-1 btn-ghost" onClick={onClose}>Batal</button>
+          <button className="flex-1 btn-primary"
+            disabled={importMut.isPending || Object.keys(selected).length === 0}
+            onClick={() => importMut.mutate()}>
+            {importMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+            Import {Object.keys(selected).length > 0 ? `(${Object.keys(selected).length})` : ''}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function Hotspot() {
   const qc = useQueryClient();
@@ -210,6 +362,7 @@ export default function Hotspot() {
   const [tab, setTab] = useState<'vouchers' | 'packages'>('vouchers');
   const [filterStatus, setFilterStatus] = useState('');
   const [showGenerate, setShowGenerate] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [showSync, setShowSync] = useState(false);
   const [syncRouterId, setSyncRouterId] = useState('');
   const [syncResult, setSyncResult] = useState<any | null>(null);
@@ -373,11 +526,16 @@ export default function Hotspot() {
       {/* ── Paket tab ── */}
       {tab === 'packages' && (
         <div className="space-y-3">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
             {canAdmin && (
-              <button className="btn-primary text-sm" onClick={() => { setEditPkg(undefined); setShowPkgModal(true); }}>
-                <Plus size={14} /> Tambah Paket
-              </button>
+              <>
+                <button className="btn-ghost text-sm" onClick={() => setShowImport(true)}>
+                  <RefreshCcw size={14} /> Import dari Mikrotik
+                </button>
+                <button className="btn-primary text-sm" onClick={() => { setEditPkg(undefined); setShowPkgModal(true); }}>
+                  <Plus size={14} /> Tambah Paket
+                </button>
+              </>
             )}
           </div>
           <div className="card overflow-hidden">
@@ -389,6 +547,7 @@ export default function Hotspot() {
                     <th className="px-4 py-3 font-medium">Durasi</th>
                     <th className="px-4 py-3 font-medium">Harga</th>
                     <th className="px-4 py-3 font-medium">Profile Mikrotik</th>
+                    <th className="px-4 py-3 font-medium">Rate Limit</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3 font-medium text-right">Aksi</th>
                   </tr>
@@ -400,6 +559,7 @@ export default function Hotspot() {
                       <td className="px-4 py-3 text-slate-500">{fmtDuration(p.durationMinutes)}</td>
                       <td className="px-4 py-3 font-medium">{rupiah(p.price)}</td>
                       <td className="px-4 py-3 font-mono text-xs text-slate-500">{p.mikrotikProfile}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-500">{p.rateLimit ?? '—'}</td>
                       <td className="px-4 py-3">
                         <span className={`badge ${p.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
                           {p.isActive ? 'Aktif' : 'Nonaktif'}
@@ -423,7 +583,7 @@ export default function Hotspot() {
                     </tr>
                   ))}
                   {!packages?.length && (
-                    <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Belum ada paket.</td></tr>
+                    <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">Belum ada paket.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -450,6 +610,15 @@ export default function Hotspot() {
       {/* Package Modal */}
       {showPkgModal && (
         <PackageModal pkg={editPkg} onClose={() => setShowPkgModal(false)} onSaved={() => refetchPkg()} />
+      )}
+
+      {/* Import Profiles Modal */}
+      {showImport && routers && (
+        <ImportProfilesModal
+          routers={routers}
+          onClose={() => setShowImport(false)}
+          onDone={() => { setShowImport(false); refetchPkg(); }}
+        />
       )}
 
       {/* Modal sinkronisasi */}
