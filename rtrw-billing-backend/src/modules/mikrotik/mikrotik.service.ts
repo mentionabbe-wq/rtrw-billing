@@ -379,24 +379,10 @@ export class MikrotikService {
         throw new Error(`Hotspot belum dikonfigurasi (tidak ada hotspot server aktif).`);
       }
 
-      // Coba path standar user-profile
-      try {
-        const rows = await conn.write('/ip/hotspot/user-profile/print');
-        this.logger.debug(`listHotspotProfiles ${router.name}: ${rows.length} rows via user-profile`);
-        return rows.map((r) => ({
-          name: r.name ?? r['.id'],
-          rateLimit: r['rate-limit'] ?? '',
-          sessionTimeout: r['session-timeout'] ?? '',
-          sharedUsers: r['shared-users'] ?? '1',
-        }));
-      } catch (e1: any) {
-        this.logger.warn(`user-profile path gagal: ${e1.message}, coba path lain`);
-      }
-
-      // Fallback: coba path tanpa 'user-'
-      const rows2 = await conn.write('/ip/hotspot/profile/print');
-      this.logger.debug(`listHotspotProfiles ${router.name}: ${rows2.length} rows via profile`);
-      return rows2.map((r) => ({
+      // Path benar: /ip hotspot user profile print → /ip/hotspot/user/profile/print
+      const rows = await conn.write('/ip/hotspot/user/profile/print');
+      this.logger.debug(`listHotspotProfiles ${router.name}: ${rows.length} rows`);
+      return rows.map((r) => ({
         name: r.name ?? r['.id'],
         rateLimit: r['rate-limit'] ?? '',
         sessionTimeout: r['session-timeout'] ?? '',
@@ -410,28 +396,20 @@ export class MikrotikService {
     }
   }
 
-  /** Buat/update hotspot user profile — coba kedua path. */
+  /** Buat/update hotspot user profile. Path: /ip hotspot user profile */
   private async writeHotspotProfile(
     conn: RouterOSAPI,
     name: string,
     setParams: string[],
     addParams: string[],
   ): Promise<void> {
-    // Coba user-profile dulu, fallback ke profile
-    for (const base of ['/ip/hotspot/user-profile', '/ip/hotspot/profile']) {
-      try {
-        const existing = await conn.write(`${base}/print`, [`?name=${name}`]);
-        if (existing.length) {
-          await conn.write(`${base}/set`, [`=.id=${existing[0]['.id']}`, ...setParams]);
-        } else {
-          await conn.write(`${base}/add`, [`=name=${name}`, ...addParams]);
-        }
-        return;
-      } catch {
-        // coba path berikutnya
-      }
+    const base = '/ip/hotspot/user/profile';
+    const existing = await conn.write(`${base}/print`, [`?name=${name}`]);
+    if (existing.length) {
+      await conn.write(`${base}/set`, [`=.id=${existing[0]['.id']}`, ...setParams]);
+    } else {
+      await conn.write(`${base}/add`, [`=name=${name}`, ...addParams]);
     }
-    throw new Error(`Tidak dapat menyimpan profil — /ip/hotspot/user-profile dan /ip/hotspot/profile keduanya gagal`);
   }
 
   /**
