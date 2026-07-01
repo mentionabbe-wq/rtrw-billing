@@ -190,89 +190,117 @@ function PackageModal({
     onSuccess: () => { onSaved(); onClose(); },
   });
 
+  const profilesFailed = profilesQ.isError || (profilesQ.isFetched && profilesQ.data?.length === 0);
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4">
-      <div className="card w-full max-w-sm p-6 space-y-4">
-        <h2 className="font-semibold">{isEdit ? 'Edit Paket' : 'Tambah Paket'}</h2>
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs font-medium text-slate-600">Nama paket</label>
-            <input type="text" className="input mt-1" placeholder="1 Hari"
-              value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-slate-600">Durasi (menit)</label>
-            <input type="number" className="input mt-1" placeholder="1440"
-              value={form.durationMinutes} onChange={(e) => setForm({ ...form, durationMinutes: Number(e.target.value) })} />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-slate-600">Harga (Rp)</label>
-            <input type="number" className="input mt-1" placeholder="8000"
-              value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+      <div className="card w-full max-w-sm flex flex-col max-h-[90vh]">
+        <div className="p-5 border-b">
+          <h2 className="font-semibold">{isEdit ? 'Edit Paket' : 'Tambah Paket'}</h2>
+        </div>
+
+        <div className="overflow-y-auto p-5 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-slate-600">Nama paket</label>
+              <input type="text" className="input mt-1" placeholder="1 Hari"
+                value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600">Harga (Rp)</label>
+              <input type="number" className="input mt-1" placeholder="8000"
+                value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+            </div>
           </div>
 
-          {/* Profile selector dari Mikrotik */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-slate-600">Durasi (menit)</label>
+              <input type="number" className="input mt-1" placeholder="1440"
+                value={form.durationMinutes} onChange={(e) => setForm({ ...form, durationMinutes: Number(e.target.value) })} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600">Rate Limit</label>
+              <input type="text" className="input mt-1" placeholder="2M/2M"
+                value={form.rateLimit} onChange={(e) => setForm({ ...form, rateLimit: e.target.value })} />
+            </div>
+          </div>
+
+          {/* Profile dari Mikrotik */}
           <div className="border rounded-lg p-3 space-y-2 bg-slate-50">
-            <label className="text-xs font-medium text-slate-600">Pilih Router (untuk baca profil)</label>
-            <select className="input" value={profileRouterId}
-              onChange={(e) => { setProfileRouterId(e.target.value); setForm((f) => ({ ...f, mikrotikProfile: '' })); }}>
-              {routers.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
-            <label className="text-xs font-medium text-slate-600">Profile Mikrotik</label>
-            {profilesQ.isLoading
-              ? <p className="text-xs text-slate-400">Memuat profil…</p>
-              : (
-                <select className="input" value={form.mikrotikProfile}
-                  onChange={(e) => {
-                    const p = profilesQ.data?.find((x) => x.name === e.target.value);
-                    setForm((f) => ({
-                      ...f,
-                      mikrotikProfile: e.target.value,
-                      rateLimit: p?.rateLimit || f.rateLimit,
-                      durationMinutes: p?.durationMinutes ?? f.durationMinutes,
-                    }));
-                  }}>
-                  <option value="">— pilih profil —</option>
-                  {profilesQ.data?.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.name}{p.rateLimit ? ` (${p.rateLimit})` : ''}
-                    </option>
-                  ))}
-                </select>
-              )
-            }
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-slate-600">Profile Mikrotik</label>
+              <select className="input py-0.5 text-xs w-auto"
+                value={profileRouterId}
+                onChange={(e) => { setProfileRouterId(e.target.value); setForm((f) => ({ ...f, mikrotikProfile: '' })); }}>
+                {routers.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+            </div>
+
+            {profilesQ.isLoading && (
+              <p className="text-xs text-slate-400 flex items-center gap-1">
+                <Loader2 size={12} className="animate-spin" /> Memuat profil dari Mikrotik…
+              </p>
+            )}
+
+            {!profilesQ.isLoading && !profilesFailed && (
+              <select className="input" value={form.mikrotikProfile}
+                onChange={(e) => {
+                  const p = profilesQ.data?.find((x) => x.name === e.target.value);
+                  setForm((f) => ({
+                    ...f,
+                    mikrotikProfile: e.target.value,
+                    rateLimit: p?.rateLimit || f.rateLimit,
+                    durationMinutes: p?.durationMinutes ?? f.durationMinutes,
+                  }));
+                }}>
+                <option value="">— pilih profil —</option>
+                {profilesQ.data?.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.name}{p.rateLimit ? ` (${p.rateLimit})` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {profilesFailed && (
+              <>
+                <p className="text-xs text-amber-600">Tidak dapat membaca profil dari Mikrotik, isi manual:</p>
+                <input type="text" className="input" placeholder="default"
+                  value={form.mikrotikProfile}
+                  onChange={(e) => setForm({ ...form, mikrotikProfile: e.target.value })} />
+              </>
+            )}
+
             {selectedProfile && (
               <p className="text-xs text-slate-500">
                 ⏱ {selectedProfile.durationMinutes
-                  ? `${selectedProfile.durationMinutes >= 1440
+                  ? selectedProfile.durationMinutes >= 1440
                     ? `${selectedProfile.durationMinutes / 1440} hari`
-                    : `${selectedProfile.durationMinutes / 60} jam`}`
+                    : `${selectedProfile.durationMinutes / 60} jam`
                   : 'Unlimited'}
                 {selectedProfile.rateLimit && <> &bull; ⚡ {selectedProfile.rateLimit}</>}
               </p>
             )}
           </div>
 
-          <div>
-            <label className="text-xs font-medium text-slate-600">Rate Limit (opsional, contoh: 2M/2M)</label>
-            <input type="text" className="input mt-1" placeholder="2M/2M"
-              value={form.rateLimit} onChange={(e) => setForm({ ...form, rateLimit: e.target.value })} />
-          </div>
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input type="checkbox" checked={form.isActive}
               onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />
             Aktif (tampil di halaman beli voucher)
           </label>
+
+          {form.rateLimit && form.mikrotikProfile && (
+            <p className="text-xs text-indigo-600 bg-indigo-50 rounded-lg px-3 py-2">
+              Profile <strong>{form.mikrotikProfile}</strong> akan dibuat/diperbarui di semua router dengan rate limit <strong>{form.rateLimit}</strong>.
+            </p>
+          )}
+          {save.isError && (
+            <p className="text-sm text-red-600">{(save.error as any)?.response?.data?.message ?? 'Gagal menyimpan'}</p>
+          )}
         </div>
-        {form.rateLimit && form.mikrotikProfile && (
-          <p className="text-xs text-indigo-600 bg-indigo-50 rounded-lg px-3 py-2">
-            Profile <strong>{form.mikrotikProfile}</strong> akan dibuat/diperbarui di semua router dengan rate limit <strong>{form.rateLimit}</strong>.
-          </p>
-        )}
-        {save.isError && (
-          <p className="text-sm text-red-600">{(save.error as any)?.response?.data?.message ?? 'Gagal menyimpan'}</p>
-        )}
-        <div className="flex gap-2">
+
+        <div className="p-5 border-t flex gap-2">
           <button className="flex-1 btn-ghost" onClick={onClose}>Batal</button>
           <button className="flex-1 btn-primary"
             disabled={save.isPending || !form.mikrotikProfile}
