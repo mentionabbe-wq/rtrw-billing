@@ -274,6 +274,79 @@ export class HotspotService {
     };
   }
 
+  /**
+   * Sinkronisasi dari Mikrotik → DB.
+   * - User Mikrotik yg sudah ada di DB sebagai voucher → update status jadi active
+   * - User Mikrotik yg belum ada di DB → buat voucher baru
+   * - Voucher DB aktif yg tidak ada di Mikrotik → ditandai saja di laporan (tidak dihapus otomatis)
+   */
+  async syncFromMikrotik(routerId: string) {
+    const router = await this.routers.findOneOrFail({ where: { id: routerId } });
+    const mtUsers = await this.mikrotik.listHotspotUsers(router);
+
+    // skip entry default Mikrotik
+    const validUsers = mtUsers.filter((u) => u.name && u.name !== '!!!');
+
+    let imported = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    for (const u of validUsers) {
+      const existing = await this.vouchers.findOne({ where: { username: u.name } });
+
+      if (existing) {
+        // Sudah ada di DB — aktifkan kembali jika statusnya bukan active
+        if (existing.status !== 'active' && !u.disabled) {
+          await this.vouchers.update(existing.id, { status: 'active' });
+          updated++;
+        } else {
+          skipped++;
+        }
+      } else {
+        // Belum ada di DB — import sebagai voucher baru
+        const password = u.password || '';
+        const passwordEnc = this.crypto.encrypt(password || 'imported') as Buffer;
+
+        // Coba cocokkan paket berdasarkan profile Mikrotik
+        const pkg = u.profile && u.profile !== 'default'
+          ? await this.pkgs.findOne({ where: { mikrotikProfile: u.profile, isActive: true } })
+          : null;
+
+        const v = this.vouchers.create();
+        v.code = this.genCode();
+        v.username = u.name;
+        v.passwordEnc = passwordEnc;
+        v.routerId = routerId;
+        v.status = u.disabled ? 'void' : 'active';
+        v.buyerName = u.comment || null;
+        if (pkg) {
+          v.packageId = pkg.id;
+          v.amount = pkg.price;
+        }
+        await this.vouchers.save(v);
+        imported++;
+      }
+    }
+
+    // Hitung voucher aktif di DB yg tidak ada di Mikrotik
+    const mtUsernames = new Set(validUsers.map((u) => u.name));
+    const dbActive = await this.vouchers.find({ where: { status: 'active', routerId } });
+    const missingInMt = dbActive.filter((v) => !mtUsernames.has(v.username)).length;
+
+    this.logger.log(
+      `Sync router=${router.name}: found=${validUsers.length} imported=${imported} updated=${updated} skipped=${skipped} missingInMikrotik=${missingInMt}`,
+    );
+
+    return {
+      routerName: router.name,
+      foundInMikrotik: validUsers.length,
+      imported,
+      updated,
+      skipped,
+      missingInMikrotik: missingInMt,
+    };
+  }
+
   /** Batalkan voucher (admin). */
   async voidVoucher(id: string) {
     const v = await this.vouchers.findOne({ where: { id }, relations: { router: true } });

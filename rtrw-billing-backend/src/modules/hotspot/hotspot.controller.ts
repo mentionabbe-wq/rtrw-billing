@@ -85,6 +85,14 @@ export class HotspotController {
     return this.svc.voidVoucher(id);
   }
 
+  /** Sinkronisasi hotspot user dari Mikrotik ke DB voucher. */
+  @Post('sync/:routerId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'operator')
+  sync(@Param('routerId') routerId: string) {
+    return this.svc.syncFromMikrotik(routerId);
+  }
+
   // ── Admin packages CRUD ──────────────────────────────────────────────────────
 
   @Get('admin/packages')

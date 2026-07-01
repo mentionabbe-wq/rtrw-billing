@@ -363,7 +363,7 @@ export class MikrotikService {
     }
   }
 
-  /** Daftar hotspot user yang aktif di router. */
+  /** Daftar semua hotspot user di router (termasuk password plaintext utk sinkronisasi). */
   async listHotspotUsers(router: Router): Promise<any[]> {
     const conn = await this.connect(router);
     try {
@@ -371,11 +371,12 @@ export class MikrotikService {
       return rows.map((r) => ({
         id: r['.id'],
         name: r.name,
-        profile: r.profile,
-        limitUptime: r['limit-uptime'],
-        uptime: r.uptime,
+        password: r.password ?? '',
+        profile: r.profile ?? 'default',
+        limitUptime: r['limit-uptime'] ?? '',
+        uptime: r.uptime ?? '',
         disabled: r.disabled === 'true' || r.disabled === true,
-        comment: r.comment,
+        comment: r.comment ?? '',
       }));
     } finally {
       conn.close();

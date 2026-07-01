@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Ticket, Plus, RefreshCw, Trash2, Loader2, Printer, Ban, ChevronDown,
+  Ticket, Plus, RefreshCw, Trash2, Loader2, Printer, Ban, RefreshCcw,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCan } from '@/lib/rbac';
@@ -210,6 +210,9 @@ export default function Hotspot() {
   const [tab, setTab] = useState<'vouchers' | 'packages'>('vouchers');
   const [filterStatus, setFilterStatus] = useState('');
   const [showGenerate, setShowGenerate] = useState(false);
+  const [showSync, setShowSync] = useState(false);
+  const [syncRouterId, setSyncRouterId] = useState('');
+  const [syncResult, setSyncResult] = useState<any | null>(null);
   const [showPkgModal, setShowPkgModal] = useState(false);
   const [editPkg, setEditPkg] = useState<HotspotPackage | undefined>();
   const [generatedVouchers, setGeneratedVouchers] = useState<any[] | null>(null);
@@ -233,6 +236,17 @@ export default function Hotspot() {
   const { data: routers } = useQuery<Router[]>({
     queryKey: ['hotspot-routers'],
     queryFn: async () => (await api.get('/hotspot/routers')).data,
+  });
+
+  const syncMut = useMutation({
+    mutationFn: (routerId: string) => api.post(`/hotspot/sync/${routerId}`),
+    onSuccess: (res) => {
+      setSyncResult(res.data);
+      setShowSync(false);
+      qc.invalidateQueries({ queryKey: ['hotspot-vouchers'] });
+      qc.invalidateQueries({ queryKey: ['hotspot-stats'] });
+    },
+    onError: (e: any) => alert(`Gagal sinkron: ${e?.response?.data?.message ?? e.message}`),
   });
 
   const voidMut = useMutation({
@@ -289,8 +303,12 @@ export default function Hotspot() {
               <option value="void">Void</option>
             </select>
             <div className="flex gap-2">
-              <button className="btn-ghost text-sm" onClick={() => refetchV()}>
+              <button className="btn-ghost text-sm" onClick={() => refetchV()} title="Refresh">
                 <RefreshCw size={14} />
+              </button>
+              <button className="btn-ghost text-sm"
+                onClick={() => { setSyncRouterId(routers?.[0]?.id ?? ''); setShowSync(true); }}>
+                <RefreshCcw size={14} /> Sinkron Mikrotik
               </button>
               <button className="btn-primary text-sm" onClick={() => setShowGenerate(true)}>
                 <Plus size={14} /> Generate Voucher
@@ -432,6 +450,73 @@ export default function Hotspot() {
       {/* Package Modal */}
       {showPkgModal && (
         <PackageModal pkg={editPkg} onClose={() => setShowPkgModal(false)} onSaved={() => refetchPkg()} />
+      )}
+
+      {/* Modal sinkronisasi */}
+      {showSync && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4">
+          <div className="card w-full max-w-sm p-6 space-y-4">
+            <h2 className="font-semibold flex items-center gap-2">
+              <RefreshCcw size={18} className="text-indigo-500" /> Sinkron dari Mikrotik
+            </h2>
+            <p className="text-sm text-slate-500">
+              Baca semua hotspot user dari Mikrotik dan impor yang belum ada ke daftar voucher.
+            </p>
+            <div>
+              <label className="text-xs font-medium text-slate-600">Router / Hotspot</label>
+              <select className="input mt-1" value={syncRouterId}
+                onChange={(e) => setSyncRouterId(e.target.value)}>
+                {routers?.map((r) => (
+                  <option key={r.id} value={r.id}>{r.name} ({r.status})</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <button className="flex-1 btn-ghost" onClick={() => setShowSync(false)}>Batal</button>
+              <button
+                className="flex-1 btn-primary"
+                disabled={syncMut.isPending || !syncRouterId}
+                onClick={() => syncMut.mutate(syncRouterId)}
+              >
+                {syncMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <RefreshCcw size={15} />}
+                Mulai Sinkron
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hasil sinkronisasi */}
+      {syncResult && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4">
+          <div className="card w-full max-w-sm p-6 space-y-4">
+            <h2 className="font-semibold text-emerald-700 flex items-center gap-2">
+              <RefreshCcw size={18} /> Sinkronisasi Selesai
+            </h2>
+            <p className="text-sm text-slate-500">Router: <strong>{syncResult.routerName}</strong></p>
+            <div className="divide-y border rounded-lg text-sm overflow-hidden">
+              {[
+                { label: 'Ditemukan di Mikrotik', val: syncResult.foundInMikrotik, color: 'text-slate-700' },
+                { label: 'Diimpor ke DB (baru)', val: syncResult.imported, color: 'text-emerald-600 font-semibold' },
+                { label: 'Status diperbarui', val: syncResult.updated, color: 'text-indigo-600' },
+                { label: 'Sudah sinkron', val: syncResult.skipped, color: 'text-slate-400' },
+                { label: 'Ada di DB tapi tidak di Mikrotik', val: syncResult.missingInMikrotik, color: syncResult.missingInMikrotik > 0 ? 'text-amber-600' : 'text-slate-400' },
+              ].map((row) => (
+                <div key={row.label} className="flex justify-between px-4 py-2">
+                  <span className="text-slate-600">{row.label}</span>
+                  <span className={row.color}>{row.val}</span>
+                </div>
+              ))}
+            </div>
+            {syncResult.missingInMikrotik > 0 && (
+              <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+                {syncResult.missingInMikrotik} voucher aktif di DB tidak ditemukan di Mikrotik.
+                Kemungkinan sudah dihapus manual. Void voucher tersebut jika tidak diperlukan lagi.
+              </p>
+            )}
+            <button className="w-full btn-primary" onClick={() => setSyncResult(null)}>Selesai</button>
+          </div>
+        </div>
       )}
 
       {/* Generated vouchers result */}
