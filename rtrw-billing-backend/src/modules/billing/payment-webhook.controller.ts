@@ -4,6 +4,7 @@ import { ApiTags } from '@nestjs/swagger';
 import * as crypto from 'crypto';
 import { BillingService } from './billing.service';
 import { HotspotService } from '@modules/hotspot/hotspot.service';
+import { IntegrationsService } from '@modules/integrations/integrations.service';
 
 /**
  * Public webhook endpoints. NOT behind JwtAuthGuard — signature verification wajib.
@@ -19,12 +20,13 @@ export class PaymentWebhookController {
     private readonly billing: BillingService,
     private readonly hotspot: HotspotService,
     private readonly config: ConfigService,
+    private readonly integrations: IntegrationsService,
   ) {}
 
   /** Midtrans HTTP notification. */
   @Post('midtrans')
   async midtrans(@Body() body: any) {
-    const serverKey = process.env.MIDTRANS_SERVER_KEY || '';
+    const { midtransServerKey: serverKey } = await this.integrations.resolvePayment();
     const expected = crypto
       .createHash('sha512')
       .update(body.order_id + body.status_code + body.gross_amount + serverKey)
@@ -56,7 +58,7 @@ export class PaymentWebhookController {
   /** Tripay callback (signature in X-Callback-Signature header). */
   @Post('tripay')
   async tripay(@Req() req: any, @Body() body: any) {
-    const privateKey = process.env.TRIPAY_PRIVATE_KEY || '';
+    const { tripayPrivateKey: privateKey } = await this.integrations.resolvePayment();
     const signature = crypto
       .createHmac('sha256', privateKey)
       .update(JSON.stringify(body))

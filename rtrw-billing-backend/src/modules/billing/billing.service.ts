@@ -79,6 +79,35 @@ export class BillingService {
     return { created, skipped };
   }
 
+  /**
+   * Kirim pengingat WA utk invoice unpaid yang jatuh tempo `days` hari lagi.
+   * Dipanggil cron harian. Return jumlah pesan terkirim.
+   */
+  async sendDueReminders(days: number): Promise<number> {
+    const target = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+    const rows = await this.invoices.find({
+      where: { status: 'unpaid', dueDate: target },
+      relations: { subscription: { customer: true } },
+    });
+
+    let sent = 0;
+    for (const inv of rows) {
+      const customer = inv.subscription?.customer;
+      if (!customer) continue;
+      const phone = this.crypto.decrypt(customer.phoneEnc);
+      if (!phone) continue;
+      await this.wa.send(phone, 'pengingat', {
+        name: customer.fullName,
+        amount: rupiah(inv.amount),
+        due: inv.dueDate,
+        daysLeft: String(days),
+      });
+      sent++;
+    }
+    if (sent) this.logger.log(`sendDueReminders: ${sent} pengingat dikirim (H-${days})`);
+    return sent;
+  }
+
   /** List recent invoices + nama pelanggan & status langganan (utk tombol Bayar). */
   async listInvoices() {
     const rows = await this.invoices.find({

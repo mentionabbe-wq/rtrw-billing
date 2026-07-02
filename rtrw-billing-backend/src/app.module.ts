@@ -27,6 +27,7 @@ import { SchedulerModule } from '@modules/scheduler/scheduler.module';
 import { PortalModule } from '@modules/portal/portal.module';
 import { HotspotModule } from '@modules/hotspot/hotspot.module';
 import { PaymentWebhookModule } from '@modules/billing/payment-webhook.module';
+import { IntegrationsModule } from '@modules/integrations/integrations.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { PaymentWebhookModule } from '@modules/billing/payment-webhook.module';
     }),
 
     CryptoModule,
+    IntegrationsModule,
     MonitoringModule,
     AuthModule,
     CustomersModule,

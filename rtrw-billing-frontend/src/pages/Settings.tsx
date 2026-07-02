@@ -1,6 +1,6 @@
 import { FormEvent, ReactNode, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Loader2, X, Trash2, Pencil, PlugZap, Server, Network, Globe, ExternalLink } from 'lucide-react';
+import { Plus, Loader2, X, Trash2, Pencil, PlugZap, Server, Network, Globe, ExternalLink, CreditCard, MessageCircle, CheckCircle2, XCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 
 interface Router {
@@ -19,7 +19,7 @@ const statusTone: Record<string, string> = {
 };
 
 export default function Settings() {
-  const [tab, setTab] = useState<'routers' | 'olts' | 'portal'>('routers');
+  const [tab, setTab] = useState<'routers' | 'olts' | 'portal' | 'integrations'>('routers');
 
   return (
     <div className="space-y-5">
@@ -43,10 +43,17 @@ export default function Settings() {
         >
           <Globe size={15} className="mr-1 inline" /> Portal Bayar
         </button>
+        <button
+          className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === 'integrations' ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500'}`}
+          onClick={() => setTab('integrations')}
+        >
+          <CreditCard size={15} className="mr-1 inline" /> Integrasi
+        </button>
       </div>
       {tab === 'routers' && <RoutersPanel />}
       {tab === 'olts' && <OltsPanel />}
       {tab === 'portal' && <PortalPanel />}
+      {tab === 'integrations' && <IntegrationsPanel />}
     </div>
   );
 }
@@ -445,6 +452,200 @@ add chain=dstnat src-address-list=isolir protocol=tcp dst-port=443 \\
           </form>
         </Modal>
       )}
+    </div>
+  );
+}
+
+/* ------------------------ Integrations Panel ------------------------ */
+interface IntegrationSettings {
+  tripay: { hasApiKey: boolean; hasPrivateKey: boolean; merchantCode: string; mode: string; fromEnv: boolean };
+  midtrans: { hasServerKey: boolean; mode: string; fromEnv: boolean };
+  whatsapp: { apiUrl: string; hasToken: boolean; fromEnv: boolean; reminderEnabled: boolean; reminderDays: number };
+}
+
+function ConfiguredBadge({ ok, fromEnv }: { ok: boolean; fromEnv?: boolean }) {
+  return ok ? (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
+      <CheckCircle2 size={13} /> Terkonfigurasi{fromEnv ? ' (dari env)' : ''}
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-400">
+      <XCircle size={13} /> Belum diisi
+    </span>
+  );
+}
+
+function IntegrationsPanel() {
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery<IntegrationSettings>({
+    queryKey: ['integration-settings'],
+    queryFn: async () => (await api.get('/settings/integrations')).data,
+  });
+
+  const save = useMutation({
+    mutationFn: (body: any) => api.patch('/settings/integrations', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['integration-settings'] });
+      alert('Tersimpan!');
+    },
+    onError: (e: any) => alert(`Gagal menyimpan: ${e?.response?.data?.message ?? e.message}`),
+  });
+
+  const testReminder = useMutation({
+    mutationFn: () => api.post('/billing/reminders/send'),
+    onSuccess: (res: any) =>
+      alert(`Pengingat dikirim: ${res.data.sent} pesan (utk invoice jatuh tempo H-${res.data.days}).`),
+    onError: (e: any) => alert(`Gagal: ${e?.response?.data?.message ?? e.message}`),
+  });
+
+  function onSubmitTripay(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const body: any = {
+      tripayMerchantCode: fd.get('tripayMerchantCode'),
+      tripayMode: fd.get('tripayMode'),
+    };
+    if (fd.get('tripayApiKey')) body.tripayApiKey = fd.get('tripayApiKey');
+    if (fd.get('tripayPrivateKey')) body.tripayPrivateKey = fd.get('tripayPrivateKey');
+    save.mutate(body);
+  }
+
+  function onSubmitMidtrans(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const body: any = { midtransMode: fd.get('midtransMode') };
+    if (fd.get('midtransServerKey')) body.midtransServerKey = fd.get('midtransServerKey');
+    save.mutate(body);
+  }
+
+  function onSubmitWa(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const body: any = {
+      waApiUrl: fd.get('waApiUrl'),
+      waReminderEnabled: fd.get('waReminderEnabled') === 'on',
+      waReminderDays: Number(fd.get('waReminderDays')) || 3,
+    };
+    if (fd.get('waApiToken')) body.waApiToken = fd.get('waApiToken');
+    save.mutate(body);
+  }
+
+  if (isLoading) return <div className="text-slate-400 py-8 text-center">Memuat…</div>;
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-700">
+        Konfigurasi di sini tersimpan di database (terenkripsi) dan langsung aktif tanpa
+        restart. Environment variable tetap dipakai sebagai fallback bila kolom kosong.
+        Field secret yang dikosongkan = nilai lama tetap dipertahankan.
+      </div>
+
+      {/* Tripay */}
+      <div className="card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-sm text-slate-700 flex items-center gap-2">
+            <CreditCard size={16} className="text-indigo-500" /> Tripay
+          </h3>
+          <ConfiguredBadge ok={data!.tripay.hasApiKey && data!.tripay.hasPrivateKey && !!data!.tripay.merchantCode} fromEnv={data!.tripay.fromEnv} />
+        </div>
+        <form onSubmit={onSubmitTripay} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Merchant Code</label>
+              <input name="tripayMerchantCode" className="input font-mono" defaultValue={data?.tripay.merchantCode} placeholder="T1234" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Mode</label>
+              <select name="tripayMode" className="input" defaultValue={data?.tripay.mode}>
+                <option value="sandbox">Sandbox (uji coba)</option>
+                <option value="production">Production</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">API Key</label>
+            <input name="tripayApiKey" type="password" className="input font-mono" placeholder={data?.tripay.hasApiKey ? '••••••• (kosongkan = tetap)' : 'API Key dari dashboard Tripay'} />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Private Key</label>
+            <input name="tripayPrivateKey" type="password" className="input font-mono" placeholder={data?.tripay.hasPrivateKey ? '••••••• (kosongkan = tetap)' : 'Private Key dari dashboard Tripay'} />
+          </div>
+          <button className="btn-primary" disabled={save.isPending}>
+            {save.isPending && <Loader2 className="animate-spin" size={15} />} Simpan Tripay
+          </button>
+        </form>
+      </div>
+
+      {/* Midtrans */}
+      <div className="card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-sm text-slate-700 flex items-center gap-2">
+            <CreditCard size={16} className="text-teal-500" /> Midtrans
+          </h3>
+          <ConfiguredBadge ok={data!.midtrans.hasServerKey} fromEnv={data!.midtrans.fromEnv} />
+        </div>
+        <form onSubmit={onSubmitMidtrans} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Server Key</label>
+              <input name="midtransServerKey" type="password" className="input font-mono" placeholder={data?.midtrans.hasServerKey ? '••••••• (kosongkan = tetap)' : 'SB-Mid-server-...'} />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Mode</label>
+              <select name="midtransMode" className="input" defaultValue={data?.midtrans.mode}>
+                <option value="sandbox">Sandbox (uji coba)</option>
+                <option value="production">Production</option>
+              </select>
+            </div>
+          </div>
+          <button className="btn-primary" disabled={save.isPending}>
+            {save.isPending && <Loader2 className="animate-spin" size={15} />} Simpan Midtrans
+          </button>
+        </form>
+      </div>
+
+      {/* WhatsApp */}
+      <div className="card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-sm text-slate-700 flex items-center gap-2">
+            <MessageCircle size={16} className="text-emerald-500" /> WhatsApp Gateway
+          </h3>
+          <ConfiguredBadge ok={!!data!.whatsapp.apiUrl && data!.whatsapp.hasToken} fromEnv={data!.whatsapp.fromEnv} />
+        </div>
+        <form onSubmit={onSubmitWa} className="space-y-3">
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">API URL</label>
+            <input name="waApiUrl" className="input font-mono text-sm" defaultValue={data?.whatsapp.apiUrl} placeholder="https://api.fonnte.com/send" />
+            <p className="text-xs text-slate-400 mt-1">Kompatibel Fonnte / Wablas — body: {'{ target, message }'} dengan header Authorization Bearer.</p>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">API Token</label>
+            <input name="waApiToken" type="password" className="input font-mono" placeholder={data?.whatsapp.hasToken ? '••••••• (kosongkan = tetap)' : 'Token dari provider WA'} />
+          </div>
+          <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-3">
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <input type="checkbox" name="waReminderEnabled" defaultChecked={data?.whatsapp.reminderEnabled} className="rounded" />
+              Kirim pengingat pembayaran otomatis (setiap hari jam 08:00)
+            </label>
+            <div className="flex items-center gap-2 text-sm text-slate-600">
+              Kirim
+              <input name="waReminderDays" type="number" min={0} max={14} className="input w-20 text-center" defaultValue={data?.whatsapp.reminderDays ?? 3} />
+              hari sebelum jatuh tempo
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn-primary" disabled={save.isPending}>
+              {save.isPending && <Loader2 className="animate-spin" size={15} />} Simpan WhatsApp
+            </button>
+            <button type="button" className="btn-ghost text-sm" disabled={testReminder.isPending}
+              onClick={() => testReminder.mutate()}>
+              {testReminder.isPending ? <Loader2 className="animate-spin" size={15} /> : <MessageCircle size={15} />}
+              Kirim Pengingat Sekarang
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

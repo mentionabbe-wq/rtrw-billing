@@ -5,6 +5,7 @@ import { RolesGuard } from '@common/guards/roles.guard';
 import { Roles } from '@common/decorators/roles.decorator';
 import { BillingService } from './billing.service';
 import { PaymentGatewayService } from './payment-gateway.service';
+import { IntegrationsService } from '@modules/integrations/integrations.service';
 
 @ApiTags('billing')
 @ApiBearerAuth()
@@ -14,7 +15,17 @@ export class BillingController {
   constructor(
     private readonly billing: BillingService,
     private readonly gateway: PaymentGatewayService,
+    private readonly integrations: IntegrationsService,
   ) {}
+
+  /** Kirim pengingat WA sekarang (uji manual, pakai setting H- dari Integrasi). */
+  @Post('reminders/send')
+  @Roles('admin', 'finance')
+  async sendReminders() {
+    const wa = await this.integrations.resolveWa();
+    const sent = await this.billing.sendDueReminders(wa.reminderDays);
+    return { sent, days: wa.reminderDays };
+  }
 
   @Get('invoices')
   list() {

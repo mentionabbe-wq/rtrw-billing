@@ -1,34 +1,40 @@
 import { Global, Injectable, Logger, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { IntegrationsService } from '@modules/integrations/integrations.service';
 
-export type WaTemplate = 'invoice_baru' | 'jatuh_tempo' | 'suspend' | 'aktif_kembali';
+export type WaTemplate =
+  | 'invoice_baru' | 'jatuh_tempo' | 'suspend' | 'aktif_kembali' | 'pengingat';
 
 
 const TEMPLATES: Record<WaTemplate, (v: Record<string, string>) => string> = {
   invoice_baru: (v) => `Halo ${v.name}, tagihan internet ${v.period} sebesar ${v.amount} sudah terbit. Jatuh tempo ${v.due}. Terima kasih.`,
+  pengingat: (v) => `Halo ${v.name}, pengingat: tagihan internet ${v.amount} akan jatuh tempo ${v.due} (${v.daysLeft} hari lagi). Mohon lakukan pembayaran sebelum jatuh tempo agar layanan tetap aktif. Terima kasih.`,
   jatuh_tempo: (v) => `Halo ${v.name}, tagihan ${v.amount} jatuh tempo hari ini. Mohon segera lakukan pembayaran agar layanan tetap aktif.`,
   suspend: (v) => `Halo ${v.name}, layanan internet Anda dinonaktifkan sementara karena tagihan belum dibayar. Silakan lunasi untuk mengaktifkan kembali.`,
   aktif_kembali: (v) => `Halo ${v.name}, pembayaran diterima. Layanan internet Anda sudah AKTIF kembali. Terima kasih.`,
 };
 
 /**
- * Minimal WhatsApp gateway wrapper. Configure WA_API_URL + WA_API_TOKEN to send;
- * otherwise it logs the message (dev mode). Swap `send()` body for your provider
- * (Fonnte / Wablas / WA Cloud API) — keep the template contract.
+ * Minimal WhatsApp gateway wrapper. Konfigurasi diambil dari menu
+ * Pengaturan → Integrasi (DB), fallback env WA_API_URL + WA_API_TOKEN;
+ * bila keduanya kosong pesan hanya di-log (dev mode). Body request memakai
+ * format Fonnte/Wablas ({ target, message }) — sesuaikan bila provider lain.
  */
 @Injectable()
 export class WhatsappService {
   private readonly logger = new Logger(WhatsappService.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly integrations: IntegrationsService,
+  ) {}
 
   async send(phone: string, template: WaTemplate, vars: Record<string, string>): Promise<void> {
     return this.sendRaw(phone, TEMPLATES[template](vars));
   }
 
   async sendRaw(phone: string, text: string): Promise<void> {
-    const url = process.env.WA_API_URL;
-    const token = process.env.WA_API_TOKEN;
+    const { apiUrl: url, apiToken: token } = await this.integrations.resolveWa();
 
     if (!url || !token) {
       this.logger.log(`[WA dev] -> ${phone}: ${text}`);

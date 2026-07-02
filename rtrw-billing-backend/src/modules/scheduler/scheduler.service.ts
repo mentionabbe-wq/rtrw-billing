@@ -7,6 +7,7 @@ import { Queue } from 'bullmq';
 import { LessThan, Repository } from 'typeorm';
 import { Device, Subscription } from '@database/entities';
 import { BillingService } from '@modules/billing/billing.service';
+import { IntegrationsService } from '@modules/integrations/integrations.service';
 import {
   MIKROTIK_QUEUE, MONITOR_QUEUE, MikrotikJobData, MonitorJobData, DEFAULT_JOB_OPTS,
 } from './queue.constants';
@@ -22,7 +23,17 @@ export class SchedulerService {
     @InjectQueue(MONITOR_QUEUE) private readonly monitorQueue: Queue<MonitorJobData>,
     private readonly billing: BillingService,
     private readonly config: ConfigService,
+    private readonly integrations: IntegrationsService,
   ) {}
+
+  /** Daily 08:00 — kirim pengingat WA utk invoice yang akan jatuh tempo. */
+  @Cron('0 8 * * *', { name: 'wa-payment-reminder' })
+  async waPaymentReminder() {
+    const wa = await this.integrations.resolveWa();
+    if (!wa.reminderEnabled) return;
+    const sent = await this.billing.sendDueReminders(wa.reminderDays);
+    this.logger.log(`wa-payment-reminder: sent=${sent} (H-${wa.reminderDays})`);
+  }
 
   /** Monthly 01:00 on the 1st — generate invoices for all active subscriptions. */
   @Cron('0 1 1 * *', { name: 'monthly-invoice' })

@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
+import { IntegrationsService } from '@modules/integrations/integrations.service';
 
 export interface PaymentLinkResult {
   gateway: string;
@@ -13,19 +14,19 @@ export interface PaymentLinkResult {
 export class PaymentGatewayService {
   private readonly logger = new Logger(PaymentGatewayService.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly integrations: IntegrationsService,
+  ) {}
 
-  /** Cek konfigurasi gateway yang sudah diisi. */
-  getStatus() {
-    const tripayOk = !!(
-      this.config.get('payment.tripayApiKey') &&
-      this.config.get('payment.tripayPrivateKey') &&
-      this.config.get('payment.tripayMerchantCode')
-    );
-    const midtransOk = !!this.config.get('payment.midtransServerKey');
+  /** Cek konfigurasi gateway yang sudah diisi (DB dulu, env fallback). */
+  async getStatus() {
+    const cfg = await this.integrations.resolvePayment();
+    const tripayOk = !!(cfg.tripayApiKey && cfg.tripayPrivateKey && cfg.tripayMerchantCode);
+    const midtransOk = !!cfg.midtransServerKey;
     return {
-      tripay: { configured: tripayOk, mode: this.config.get('payment.tripayMode') },
-      midtrans: { configured: midtransOk, mode: this.config.get('payment.midtransMode') },
+      tripay: { configured: tripayOk, mode: cfg.tripayMode },
+      midtrans: { configured: midtransOk, mode: cfg.midtransMode },
     };
   }
 
@@ -39,14 +40,12 @@ export class PaymentGatewayService {
     description: string;
     returnUrl?: string;
   }): Promise<PaymentLinkResult> {
-    const apiKey = this.config.get<string>('payment.tripayApiKey');
-    const privateKey = this.config.get<string>('payment.tripayPrivateKey');
-    const merchantCode = this.config.get<string>('payment.tripayMerchantCode');
-    const mode = this.config.get<string>('payment.tripayMode');
+    const cfg = await this.integrations.resolvePayment();
+    const { tripayApiKey: apiKey, tripayPrivateKey: privateKey, tripayMerchantCode: merchantCode, tripayMode: mode } = cfg;
     const appUrl = this.config.get<string>('payment.appUrl');
 
     if (!apiKey || !privateKey || !merchantCode) {
-      throw new BadRequestException('Tripay belum dikonfigurasi. Isi TRIPAY_API_KEY, TRIPAY_PRIVATE_KEY, TRIPAY_MERCHANT_CODE di environment.');
+      throw new BadRequestException('Tripay belum dikonfigurasi. Isi di menu Pengaturan → Integrasi.');
     }
 
     const signature = crypto
@@ -104,12 +103,12 @@ export class PaymentGatewayService {
     description: string;
     returnUrl?: string;
   }): Promise<PaymentLinkResult> {
-    const serverKey = this.config.get<string>('payment.midtransServerKey');
-    const mode = this.config.get<string>('payment.midtransMode');
+    const cfg = await this.integrations.resolvePayment();
+    const { midtransServerKey: serverKey, midtransMode: mode } = cfg;
     const appUrl = this.config.get<string>('payment.appUrl');
 
     if (!serverKey) {
-      throw new BadRequestException('Midtrans belum dikonfigurasi. Isi MIDTRANS_SERVER_KEY di environment.');
+      throw new BadRequestException('Midtrans belum dikonfigurasi. Isi di menu Pengaturan → Integrasi.');
     }
 
     const baseUrl = mode === 'production'
