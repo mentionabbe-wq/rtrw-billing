@@ -8,7 +8,7 @@
  *
  * Index OID = `${rxPowerOid}.${ifIndex}.${onuId}` (ifIndex = PON port, onuId = ONU/ONT id).
  */
-export type OltVendor = 'zte' | 'huawei' | 'cdata' | 'generic';
+export type OltVendor = 'zte' | 'huawei' | 'cdata' | 'cdata-gpon' | 'generic';
 
 /** Sentinel "tidak ada sinyal / LOS" yang umum dikembalikan OLT. */
 const NO_SIGNAL = [2147483647, -2147483648, 65535, 0];
@@ -67,6 +67,24 @@ export const VENDOR_PROFILES: Record<OltVendor, VendorProfile> = {
     adminDown: 2,
     // Banyak EPON OLT mengembalikan unit 0.1 dBm (dBm = raw/10). VALIDASI dulu —
     // jika hasil tampak ~10x terlalu besar/kecil, ganti pembagi ke /100 atau /1.
+    toDbm: (raw) => (NO_SIGNAL.includes(raw) ? null : raw / 10),
+  },
+
+  // ---------------- C-Data GPON (FD11xx/FD12xx/FD16xx seri GPON) ----------------
+  // ⚠️ BELUM DIVALIDASI. Tabel GPON C-Data berbeda dari EPON — umumnya di cabang
+  // 1.3.6.1.4.1.17409.2.3 (gpon olt). Setelah SNMP OLT aktif, jalankan:
+  //   snmpwalk -v2c -c <community> <ip-olt> 1.3.6.1.4.1.17409 | grep -i -E "power|rx|tx"
+  // lalu cocokkan OID + skala `toDbm()` di bawah dengan nilai mentah yang muncul.
+  'cdata-gpon': {
+    label: 'C-Data GPON FD11xx/FD12xx/FD16xx (UNVALIDATED)',
+    // gponOnuOpticalTransceiver RX/TX power (per banyak template LibreNMS/Zabbix C-Data).
+    rxPowerOid: '1.3.6.1.4.1.17409.2.3.4.2.1.4',
+    txPowerOid: '1.3.6.1.4.1.17409.2.3.4.2.1.5',
+    // gponOnu admin/aksi — VERIFIKASI sebelum dipakai utk enable/disable ONU.
+    adminStatusOid: '1.3.6.1.4.1.17409.2.3.4.1.1.4',
+    adminUp: 1,
+    adminDown: 2,
+    // Umumnya unit 0.1 dBm (dBm = raw/10); sebagian firmware pakai 0.01 (→ /100).
     toDbm: (raw) => (NO_SIGNAL.includes(raw) ? null : raw / 10),
   },
 

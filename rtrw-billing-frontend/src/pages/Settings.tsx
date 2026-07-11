@@ -258,7 +258,8 @@ function OltsPanel() {
             <select name="vendor" className="input" defaultValue={form.vendor ?? 'zte'}>
               <option value="zte">ZTE (C300/C320)</option>
               <option value="huawei">Huawei (MA56xx/MA58xx)</option>
-              <option value="cdata">C-Data (FD11xx/FD12xx)</option>
+              <option value="cdata-gpon">C-Data GPON (FD11xx/FD12xx/FD16xx)</option>
+              <option value="cdata">C-Data EPON (FD11xx/FD12xx)</option>
               <option value="generic">Generic</option>
             </select>
             <select name="snmpVersion" className="input" defaultValue={form.snmpVersion ?? 'v3'}>
