@@ -17,7 +17,7 @@ import { SnmpService, OltTarget } from '@modules/snmp/snmp.service';
 export class UpsertOltDto {
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsString() host?: string;
-  @IsOptional() @IsIn(['zte', 'huawei', 'cdata', 'generic']) vendor?: string;
+  @IsOptional() @IsIn(['zte', 'huawei', 'cdata', 'cdata-gpon', 'generic']) vendor?: string;
   @IsOptional() @IsIn(['v2c', 'v3']) snmpVersion?: string;
   @IsOptional() @IsString() snmpUser?: string;
   @IsOptional() @IsString() snmpAuthKey?: string; // plain -> encrypted
