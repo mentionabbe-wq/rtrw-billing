@@ -51,7 +51,41 @@ export class MonitoringService {
       customerName: d.subscription?.customer?.fullName ?? null,
       lastRxPower: d.lastRxPower,
       lastStatus: d.lastStatus,
+      oltIfIndex: d.oltIfIndex,
+      onuId: d.onuId,
     }));
+  }
+
+  /**
+   * Daftarkan ONU hasil scan OLT sebagai perangkat monitoring (idempotent).
+   * ONU langsung ikut polling optik 5-menit; pelanggan bisa dikaitkan belakangan.
+   */
+  async registerOnu(dto: { oltId: string; ifIndex: number; onuId: number; dBm?: number | null }) {
+    const olt = await this.olts.findOne({ where: { id: dto.oltId } });
+    if (!olt) throw new NotFoundException('OLT not found');
+
+    let d = await this.devices.findOne({
+      where: { oltHost: olt.host, oltIfIndex: dto.ifIndex, onuId: dto.onuId },
+    });
+    if (!d) {
+      // Label PON/ONU: index C-Data dikodekan 32-bit — 16 bit bawah = nomor sebenarnya.
+      const pon = dto.ifIndex > 0xffff ? dto.ifIndex & 0xffff : dto.ifIndex;
+      const onu = dto.onuId > 0xffff ? dto.onuId & 0xffff : dto.onuId;
+      d = this.devices.create({
+        type: 'onu',
+        serialNumber: `PON${pon}-ONU${onu}`,
+        oltHost: olt.host,
+        oltIfIndex: dto.ifIndex,
+        onuId: dto.onuId,
+      });
+    }
+    if (dto.dBm != null) {
+      d.lastRxPower = dto.dBm.toFixed(2);
+      d.lastStatus = 'online';
+    }
+    d.updatedAt = new Date();
+    await this.devices.save(d);
+    return { id: d.id, serialNumber: d.serialNumber };
   }
 }
 
@@ -72,5 +106,12 @@ export class MonitoringController {
   @Roles('admin', 'operator')
   setPort(@Param('id') id: string, @Body('up') up: boolean) {
     return this.service.setPort(id, up);
+  }
+
+  /** Daftarkan ONU hasil scan ke tabel perangkat monitoring. */
+  @Post('devices/register')
+  @Roles('admin', 'operator')
+  register(@Body() body: { oltId: string; ifIndex: number; onuId: number; dBm?: number | null }) {
+    return this.service.registerOnu(body);
   }
 }
