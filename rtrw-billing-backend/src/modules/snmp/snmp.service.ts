@@ -68,10 +68,15 @@ export class SnmpService {
   ): Promise<Array<{ ifIndex: number; onuId: number; dBm: number | null; health: OpticalReading['health'] }>> {
     const profile = getProfile(olt.vendor);
     const rows = await this.walk(olt, profile.rxPowerOid);
+    const base = profile.rxPowerOid.replace(/^\./, '');
     return rows.map(({ oid, value }) => {
-      const parts = oid.split('.');
+      // Suffix index relatif thd base OID: ZTE/Huawei 2 bagian (ifIndex.onuId),
+      // C-Data GPON 3 bagian (ponPort.0.onuIdx) — ambil bagian pertama & terakhir.
+      const clean = oid.replace(/^\./, '');
+      const suffix = clean.startsWith(base) ? clean.slice(base.length + 1) : clean;
+      const parts = suffix.split('.');
+      const ifIndex = Number(parts[0]);
       const onuId = Number(parts[parts.length - 1]);
-      const ifIndex = Number(parts[parts.length - 2]);
       const dBm = profile.toDbm(Number(value));
       return { ifIndex, onuId, dBm, health: this.classify(dBm) };
     });
@@ -79,7 +84,8 @@ export class SnmpService {
 
   async readOpticalPower(olt: OltTarget, ifIndex: number, onuId: number): Promise<OpticalReading> {
     const profile = getProfile(olt.vendor);
-    const oid = `${profile.rxPowerOid}.${ifIndex}.${onuId}`;
+    const idx = profile.buildIndex ? profile.buildIndex(ifIndex, onuId) : `${ifIndex}.${onuId}`;
+    const oid = `${profile.rxPowerOid}.${idx}`;
     const raw = await this.get(olt, oid);
     const dBm = profile.toDbm(Number(raw));
     return { dBm, health: this.classify(dBm) };
@@ -89,7 +95,8 @@ export class SnmpService {
   async setOnuAdminStatus(olt: OltTarget, ifIndex: number, onuId: number, up: boolean): Promise<void> {
     const profile = getProfile(olt.vendor);
     const session = this.session(olt);
-    const oid = `${profile.adminStatusOid}.${ifIndex}.${onuId}`;
+    const idx = profile.buildIndex ? profile.buildIndex(ifIndex, onuId) : `${ifIndex}.${onuId}`;
+    const oid = `${profile.adminStatusOid}.${idx}`;
     return new Promise((resolve, reject) => {
       session.set(
         [{ oid, type: snmp.ObjectType.Integer, value: up ? profile.adminUp : profile.adminDown }],
