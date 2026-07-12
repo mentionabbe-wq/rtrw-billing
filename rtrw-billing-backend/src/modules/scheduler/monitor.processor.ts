@@ -46,10 +46,19 @@ export class MonitorProcessor extends WorkerHost {
 
     try {
       const reading = await this.snmp.readOpticalPower(olt, device.oltIfIndex, device.onuId);
+
+      // Tak terbaca (timeout/SNMP error/ONU tak ada di tabel walk) → JANGAN alarm.
+      // Pertahankan nilai & status terakhir supaya tidak muncul LOS palsu sesaat.
+      if (!reading.found) {
+        this.logger.debug(`ONU ${device.id} tak terbaca poll ini — status dipertahankan.`);
+        return;
+      }
+
       const rx = reading.dBm == null ? null : reading.dBm.toFixed(2);
       await this.metrics.save(this.metrics.create({ deviceId: device.id, rxPower: rx }));
       await this.devices.update(device.id, {
         lastRxPower: rx,
+        // LOS asli hanya bila OLT benar-benar melaporkan tak ada sinyal.
         lastStatus: reading.dBm == null ? 'los' : reading.health === 'critical' ? 'los' : 'online',
         updatedAt: new Date(),
       });
@@ -59,9 +68,9 @@ export class MonitorProcessor extends WorkerHost {
         health: reading.health,
       });
     } catch (err) {
-      await this.devices.update(device.id, { lastStatus: 'offline', updatedAt: new Date() });
-      this.gateway.emitOnuStatus({ deviceId: device.id, dBm: null, health: 'critical' });
-      this.logger.warn(`SNMP poll failed for device ${device.id}: ${err.message}`);
+      // Gagal total (mis. OLT unreachable) → jangan flip ke LOS/offline; biarkan
+      // status terakhir. Cuma catat warning. Alarm sesungguhnya butuh pembacaan sukses.
+      this.logger.warn(`SNMP poll gagal utk device ${device.id}: ${err.message} — status dipertahankan.`);
     }
   }
 }

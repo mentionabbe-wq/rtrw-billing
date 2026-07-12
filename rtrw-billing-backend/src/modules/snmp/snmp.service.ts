@@ -17,6 +17,9 @@ export interface OltTarget {
 export interface OpticalReading {
   dBm: number | null;
   health: 'ok' | 'warning' | 'critical';
+  /** true = ONU benar-benar terbaca di OLT (dBm valid ATAU LOS asli).
+   *  false = tidak bisa dibaca (timeout/SNMP error/tak ada di tabel) → jangan alarm. */
+  found: boolean;
 }
 
 /**
@@ -34,9 +37,12 @@ export class SnmpService {
   ) {}
 
   private session(olt: OltTarget): any {
+    // Timeout & retry lebih longgar: OLT GPON (C-Data) sering lambat menjawab
+    // walk DDM saat sibuk. Tanpa ini, timeout sesaat -> status LOS palsu.
+    const opts = { timeout: 8000, retries: 3 };
     // v2c: community = snmpUser. Dipakai banyak OLT EPON murah (mis. C-Data).
     if ((olt.version ?? 'v3').toLowerCase() === 'v2c') {
-      return snmp.createSession(olt.host, olt.snmpUser, { version: snmp.Version2c });
+      return snmp.createSession(olt.host, olt.snmpUser, { version: snmp.Version2c, ...opts });
     }
     // v3 authPriv (default).
     return snmp.createV3Session(olt.host, {
@@ -46,6 +52,7 @@ export class SnmpService {
       authKey: this.crypto.decrypt(olt.authKeyEnc),
       privProtocol: snmp.PrivProtocols.aes,
       privKey: this.crypto.decrypt(olt.privKeyEnc),
+      ...opts,
     });
   }
 
@@ -120,15 +127,20 @@ export class SnmpService {
     try {
       const raw = await this.get(olt, `${profile.rxPowerOid}.${idx}`);
       const dBm = profile.toDbm(Number(raw));
-      if (dBm != null) return { dBm, health: this.classify(dBm) };
+      if (dBm != null) return { dBm, health: this.classify(dBm), found: true };
     } catch {
       /* fallthrough ke walk */
     }
 
+    // Fallback walk. Jika walk sendiri gagal (timeout/SNMP error), lempar —
+    // caller memperlakukannya sbg "tak terbaca", BUKAN LOS (hindari alarm palsu).
     const rows = await this.walkOnu(olt);
     const match = rows.find((r) => r.ifIndex === ifIndex && r.onuId === onuId);
-    const dBm = match?.dBm ?? null;
-    return { dBm, health: this.classify(dBm) };
+    if (!match) {
+      // ONU tak ada di tabel walk → anggap tak terbaca, jangan alarm LOS.
+      return { dBm: null, health: 'ok', found: false };
+    }
+    return { dBm: match.dBm, health: this.classify(match.dBm), found: true };
   }
 
   /** SET ONU/ONT admin status: up=enable, down=shutdown (nilai per vendor). */
