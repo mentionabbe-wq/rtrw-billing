@@ -462,6 +462,7 @@ interface IntegrationSettings {
   tripay: { hasApiKey: boolean; hasPrivateKey: boolean; merchantCode: string; mode: string; fromEnv: boolean };
   midtrans: { hasServerKey: boolean; mode: string; fromEnv: boolean };
   whatsapp: { apiUrl: string; hasToken: boolean; fromEnv: boolean; reminderEnabled: boolean; reminderDays: number };
+  genieacs: { url: string; username: string; hasPassword: boolean; fromEnv: boolean };
 }
 
 function ConfiguredBadge({ ok, fromEnv }: { ok: boolean; fromEnv?: boolean }) {
@@ -500,6 +501,12 @@ function IntegrationsPanel() {
     onError: (e: any) => alert(`Gagal: ${e?.response?.data?.message ?? e.message}`),
   });
 
+  const testAcs = useMutation({
+    mutationFn: () => api.get('/genieacs/devices'),
+    onSuccess: (res: any) => alert(`GenieACS terhubung ✓ — ${res.data.length} perangkat terbaca.`),
+    onError: (e: any) => alert(`GenieACS gagal: ${e?.response?.data?.message ?? e.message}`),
+  });
+
   function onSubmitTripay(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -529,6 +536,17 @@ function IntegrationsPanel() {
       waReminderDays: Number(fd.get('waReminderDays')) || 3,
     };
     if (fd.get('waApiToken')) body.waApiToken = fd.get('waApiToken');
+    save.mutate(body);
+  }
+
+  function onSubmitAcs(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const body: any = {
+      genieacsUrl: fd.get('genieacsUrl'),
+      genieacsUsername: fd.get('genieacsUsername'),
+    };
+    if (fd.get('genieacsPassword')) body.genieacsPassword = fd.get('genieacsPassword');
     save.mutate(body);
   }
 
@@ -643,6 +661,43 @@ function IntegrationsPanel() {
               onClick={() => testReminder.mutate()}>
               {testReminder.isPending ? <Loader2 className="animate-spin" size={15} /> : <MessageCircle size={15} />}
               Kirim Pengingat Sekarang
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* GenieACS (TR-069) */}
+      <div className="card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-sm text-slate-700 flex items-center gap-2">
+            <Network size={16} className="text-sky-500" /> GenieACS (TR-069)
+          </h3>
+          <ConfiguredBadge ok={!!data!.genieacs.url} fromEnv={data!.genieacs.fromEnv} />
+        </div>
+        <form onSubmit={onSubmitAcs} className="space-y-3">
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">URL NBI GenieACS</label>
+            <input name="genieacsUrl" className="input font-mono text-sm" defaultValue={data?.genieacs.url} placeholder="http://192.168.30.102:7557" />
+            <p className="text-xs text-slate-400 mt-1">Port NBI GenieACS (default 7557). ONU diarahkan ke ACS di port 7547.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Username (opsional)</label>
+              <input name="genieacsUsername" className="input" defaultValue={data?.genieacs.username} placeholder="kosong jika tanpa auth" />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Password (opsional)</label>
+              <input name="genieacsPassword" type="password" className="input" placeholder={data?.genieacs.hasPassword ? '••••••• (kosongkan = tetap)' : 'kosong jika tanpa auth'} />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn-primary" disabled={save.isPending}>
+              {save.isPending && <Loader2 className="animate-spin" size={15} />} Simpan GenieACS
+            </button>
+            <button type="button" className="btn-ghost text-sm" disabled={testAcs.isPending}
+              onClick={() => testAcs.mutate()}>
+              {testAcs.isPending ? <Loader2 className="animate-spin" size={15} /> : <PlugZap size={15} />}
+              Test Koneksi
             </button>
           </div>
         </form>

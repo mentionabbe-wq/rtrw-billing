@@ -2,36 +2,36 @@ import {
   BadRequestException, Body, Controller, Get, Injectable, Logger, Module,
   Param, Post, UseGuards,
 } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@modules/auth/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { Roles } from '@common/decorators/roles.decorator';
+import { IntegrationsService } from '@modules/integrations/integrations.service';
 
 /**
  * Integrasi GenieACS via NBI REST API (TR-069). Aplikasi ini "menyetir"
  * server GenieACS: daftar ONU, ubah SSID/password WiFi, reboot, refresh.
  * Pekerjaan TR-069 sebenarnya dilakukan GenieACS.
  *
- * Konfigurasi via env: GENIEACS_URL (mis. http://ip:7557), GENIEACS_USERNAME,
- * GENIEACS_PASSWORD (opsional, bila NBI di balik basic-auth).
+ * Konfigurasi dari menu Pengaturan → Integrasi (DB), fallback env
+ * GENIEACS_URL / GENIEACS_USERNAME / GENIEACS_PASSWORD.
  */
 @Injectable()
 export class GenieacsService {
   private readonly logger = new Logger(GenieacsService.name);
-  constructor(private readonly config: ConfigService) {}
+  constructor(private readonly integrations: IntegrationsService) {}
 
-  private base(): string {
-    const url = this.config.get<string>('genieacs.url');
-    if (!url) throw new BadRequestException('GENIEACS_URL belum diset di environment aplikasi.');
-    return url.replace(/\/$/, '');
-  }
-  private headers(): Record<string, string> {
-    const h: Record<string, string> = { 'Content-Type': 'application/json' };
-    const u = this.config.get<string>('genieacs.username');
-    const p = this.config.get<string>('genieacs.password');
-    if (u) h['Authorization'] = 'Basic ' + Buffer.from(`${u}:${p ?? ''}`).toString('base64');
-    return h;
+  /** URL NBI + header auth efektif (DB dulu, env fallback). */
+  private async client(): Promise<{ base: string; headers: Record<string, string> }> {
+    const cfg = await this.integrations.resolveGenieacs();
+    if (!cfg.url) {
+      throw new BadRequestException('GenieACS belum dikonfigurasi. Isi di menu Pengaturan → Integrasi.');
+    }
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (cfg.username) {
+      headers['Authorization'] = 'Basic ' + Buffer.from(`${cfg.username}:${cfg.password}`).toString('base64');
+    }
+    return { base: cfg.url.replace(/\/$/, ''), headers };
   }
 
   /** Baca nilai parameter (path titik) dari objek device GenieACS. */
@@ -58,7 +58,8 @@ export class GenieacsService {
       'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.ExternalIPAddress',
       'Device.WiFi.SSID.1.SSID',
     ].join(',');
-    const res = await fetch(`${this.base()}/devices/?projection=${encodeURIComponent(projection)}`, { headers: this.headers() });
+    const { base, headers } = await this.client();
+    const res = await fetch(`${base}/devices/?projection=${encodeURIComponent(projection)}`, { headers });
     if (!res.ok) throw new BadRequestException(`GenieACS error ${res.status}`);
     const arr = (await res.json()) as any[];
     return arr.map((d) => this.summary(d));
@@ -105,8 +106,9 @@ export class GenieacsService {
 
   // ---- internal ----
   private async fetchOne(id: string): Promise<any> {
+    const { base, headers } = await this.client();
     const q = encodeURIComponent(JSON.stringify({ _id: id }));
-    const res = await fetch(`${this.base()}/devices/?query=${q}`, { headers: this.headers() });
+    const res = await fetch(`${base}/devices/?query=${q}`, { headers });
     if (!res.ok) throw new BadRequestException(`GenieACS error ${res.status}`);
     const arr = (await res.json()) as any[];
     if (!arr.length) throw new BadRequestException('Device tidak ditemukan di GenieACS.');
@@ -114,9 +116,10 @@ export class GenieacsService {
   }
 
   private async task(id: string, body: any) {
+    const { base, headers } = await this.client();
     const res = await fetch(
-      `${this.base()}/devices/${encodeURIComponent(id)}/tasks?connection_request`,
-      { method: 'POST', headers: this.headers(), body: JSON.stringify(body) },
+      `${base}/devices/${encodeURIComponent(id)}/tasks?connection_request`,
+      { method: 'POST', headers, body: JSON.stringify(body) },
     );
     // 200 = selesai, 202 = antri (device sedang offline). Keduanya OK.
     if (!res.ok && res.status !== 202) {
@@ -194,7 +197,6 @@ export class GenieacsController {
 }
 
 @Module({
-  imports: [ConfigModule],
   controllers: [GenieacsController],
   providers: [GenieacsService],
 })

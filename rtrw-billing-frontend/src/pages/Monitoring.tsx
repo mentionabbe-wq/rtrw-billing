@@ -213,8 +213,8 @@ function GenieacsPanel() {
       {error != null && (
         <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
           Gagal membaca GenieACS: {(error as any)?.response?.data?.message ?? (error as any)?.message}.
-          Pastikan <code className="bg-amber-100 px-1 rounded">GENIEACS_URL</code> diset di environment aplikasi
-          (mis. <code className="bg-amber-100 px-1 rounded">http://IP-SERVER:7557</code>) dan ONU sudah diarahkan
+          Isi URL GenieACS di menu <strong>Pengaturan → Integrasi</strong>
+          (mis. <code className="bg-amber-100 px-1 rounded">http://IP-SERVER:7557</code>) dan arahkan ONU
           ke ACS <code className="bg-amber-100 px-1 rounded">http://IP-SERVER:7547</code>.
         </div>
       )}

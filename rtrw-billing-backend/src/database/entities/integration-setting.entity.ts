@@ -44,4 +44,15 @@ export class IntegrationSetting {
   /** Berapa hari sebelum jatuh tempo pengingat dikirim. */
   @Column({ name: 'wa_reminder_days', type: 'int', default: 3 })
   waReminderDays: number;
+
+  // ── GenieACS (TR-069) ──
+  /** URL NBI GenieACS, mis. http://192.168.30.102:7557. */
+  @Column({ name: 'genieacs_url', nullable: true })
+  genieacsUrl: string | null;
+
+  @Column({ name: 'genieacs_username', nullable: true })
+  genieacsUsername: string | null;
+
+  @Column({ name: 'genieacs_password_enc', type: 'bytea', nullable: true })
+  genieacsPasswordEnc: Buffer | null;
 }

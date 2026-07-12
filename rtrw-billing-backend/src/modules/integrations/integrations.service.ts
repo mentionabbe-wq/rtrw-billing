@@ -21,6 +21,12 @@ export interface ResolvedWaConfig {
   reminderDays: number;
 }
 
+export interface ResolvedGenieacsConfig {
+  url: string;
+  username: string;
+  password: string;
+}
+
 /**
  * Konfigurasi integrasi (payment gateway + WA) dari DB, dengan fallback env.
  * Diedit lewat UI admin → PATCH /settings/integrations.
@@ -67,11 +73,23 @@ export class IntegrationsService {
     };
   }
 
+  /** Nilai efektif utk GenieACS: DB dulu, env sebagai fallback. */
+  async resolveGenieacs(): Promise<ResolvedGenieacsConfig> {
+    const row = await this.getRow();
+    return {
+      url: row.genieacsUrl || this.config.get('genieacs.url') || '',
+      username: row.genieacsUsername || this.config.get('genieacs.username') || '',
+      password:
+        this.crypto.decrypt(row.genieacsPasswordEnc) || this.config.get('genieacs.password') || '',
+    };
+  }
+
   /** Utk UI admin — secret tidak dikembalikan, hanya flag terisi/tidak. */
   async getMasked() {
     const row = await this.getRow();
     const pay = await this.resolvePayment();
     const wa = await this.resolveWa();
+    const acs = await this.resolveGenieacs();
     return {
       tripay: {
         hasApiKey: !!pay.tripayApiKey,
@@ -92,6 +110,12 @@ export class IntegrationsService {
         reminderEnabled: row.waReminderEnabled,
         reminderDays: row.waReminderDays,
       },
+      genieacs: {
+        url: row.genieacsUrl ?? '',
+        username: row.genieacsUsername ?? '',
+        hasPassword: !!acs.password,
+        fromEnv: !row.genieacsUrl && !!this.config.get('genieacs.url'),
+      },
     };
   }
 
@@ -106,6 +130,9 @@ export class IntegrationsService {
     waApiToken?: string;
     waReminderEnabled?: boolean;
     waReminderDays?: number;
+    genieacsUrl?: string;
+    genieacsUsername?: string;
+    genieacsPassword?: string;
   }) {
     const row = await this.getRow();
 
@@ -114,6 +141,7 @@ export class IntegrationsService {
     if (dto.tripayPrivateKey) row.tripayPrivateKeyEnc = this.crypto.encrypt(dto.tripayPrivateKey);
     if (dto.midtransServerKey) row.midtransServerKeyEnc = this.crypto.encrypt(dto.midtransServerKey);
     if (dto.waApiToken) row.waApiTokenEnc = this.crypto.encrypt(dto.waApiToken);
+    if (dto.genieacsPassword) row.genieacsPasswordEnc = this.crypto.encrypt(dto.genieacsPassword);
 
     if (dto.tripayMerchantCode !== undefined) row.tripayMerchantCode = dto.tripayMerchantCode || null;
     if (dto.tripayMode) row.tripayMode = dto.tripayMode;
@@ -123,6 +151,8 @@ export class IntegrationsService {
     if (dto.waReminderDays !== undefined && dto.waReminderDays >= 0) {
       row.waReminderDays = dto.waReminderDays;
     }
+    if (dto.genieacsUrl !== undefined) row.genieacsUrl = dto.genieacsUrl || null;
+    if (dto.genieacsUsername !== undefined) row.genieacsUsername = dto.genieacsUsername || null;
 
     await this.repo.save(row);
     return this.getMasked();
