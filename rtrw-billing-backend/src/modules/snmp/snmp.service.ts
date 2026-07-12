@@ -85,9 +85,21 @@ export class SnmpService {
   async readOpticalPower(olt: OltTarget, ifIndex: number, onuId: number): Promise<OpticalReading> {
     const profile = getProfile(olt.vendor);
     const idx = profile.buildIndex ? profile.buildIndex(ifIndex, onuId) : `${ifIndex}.${onuId}`;
-    const oid = `${profile.rxPowerOid}.${idx}`;
-    const raw = await this.get(olt, oid);
-    const dBm = profile.toDbm(Number(raw));
+
+    // Coba GET langsung dulu (cepat & ringan). Banyak OLT GPON — termasuk
+    // C-Data — TIDAK menjawab GET pada leaf DDM, hanya lewat walk/GETNEXT;
+    // dalam kasus itu GET balik null/noSuchInstance → fallback ke walk & cocokkan.
+    try {
+      const raw = await this.get(olt, `${profile.rxPowerOid}.${idx}`);
+      const dBm = profile.toDbm(Number(raw));
+      if (dBm != null) return { dBm, health: this.classify(dBm) };
+    } catch {
+      /* fallthrough ke walk */
+    }
+
+    const rows = await this.walkOnu(olt);
+    const match = rows.find((r) => r.ifIndex === ifIndex && r.onuId === onuId);
+    const dBm = match?.dBm ?? null;
     return { dBm, health: this.classify(dBm) };
   }
 

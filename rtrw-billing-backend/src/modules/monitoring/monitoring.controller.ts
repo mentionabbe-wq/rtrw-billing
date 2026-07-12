@@ -1,5 +1,5 @@
 import {
-  BadRequestException, Body, Controller, Get, Injectable, NotFoundException, Param, Post, UseGuards,
+  BadRequestException, Body, Controller, Delete, Get, Injectable, NotFoundException, Param, Post, UseGuards,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -49,6 +49,7 @@ export class MonitoringService {
       id: d.id,
       serialNumber: d.serialNumber,
       customerName: d.subscription?.customer?.fullName ?? null,
+      subscriptionId: d.subscription?.id ?? null,
       lastRxPower: d.lastRxPower,
       lastStatus: d.lastStatus,
       oltIfIndex: d.oltIfIndex,
@@ -87,6 +88,21 @@ export class MonitoringService {
     await this.devices.save(d);
     return { id: d.id, serialNumber: d.serialNumber };
   }
+
+  /** Kaitkan/lepas ONU ke pelanggan (langganan). subscriptionId null = lepas. */
+  async assignSubscription(deviceId: string, subscriptionId: string | null) {
+    const d = await this.devices.findOne({ where: { id: deviceId } });
+    if (!d) throw new NotFoundException('Device not found');
+    d.subscription = subscriptionId ? ({ id: subscriptionId } as any) : null;
+    await this.devices.save(d);
+    return { id: d.id, subscriptionId };
+  }
+
+  /** Hapus ONU dari daftar monitoring. */
+  async removeDevice(deviceId: string) {
+    await this.devices.delete(deviceId);
+    return { id: deviceId, deleted: true };
+  }
 }
 
 @ApiTags('monitoring')
@@ -113,5 +129,19 @@ export class MonitoringController {
   @Roles('admin', 'operator')
   register(@Body() body: { oltId: string; ifIndex: number; onuId: number; dBm?: number | null }) {
     return this.service.registerOnu(body);
+  }
+
+  /** Kaitkan ONU ke pelanggan. Body: { subscriptionId: string | null }. */
+  @Post('devices/:id/assign')
+  @Roles('admin', 'operator')
+  assign(@Param('id') id: string, @Body('subscriptionId') subscriptionId: string | null) {
+    return this.service.assignSubscription(id, subscriptionId ?? null);
+  }
+
+  /** Hapus ONU dari monitoring. */
+  @Delete('devices/:id')
+  @Roles('admin', 'operator')
+  remove(@Param('id') id: string) {
+    return this.service.removeDevice(id);
   }
 }

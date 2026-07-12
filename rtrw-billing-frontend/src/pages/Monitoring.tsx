@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Activity, Wifi, WifiOff, Power, PowerOff, Loader2, Radar, Users2, Plus, RefreshCw, Router as RouterIcon,
+  Activity, Wifi, WifiOff, Power, PowerOff, Loader2, Radar, Users2, Plus, RefreshCw, Router as RouterIcon, Trash2,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCan } from '@/lib/rbac';
@@ -11,6 +11,7 @@ interface Device {
   id: string;
   serialNumber: string;
   customerName?: string;
+  subscriptionId?: string | null;
   lastRxPower: string | null;
   lastStatus: string | null;
   oltIfIndex: number | null;
@@ -38,7 +39,10 @@ function dbmTone(dbm: number | null) {
   return 'text-emerald-600 font-semibold';
 }
 
+interface SubLite { id: string; customerName?: string; pppoeUser?: string }
+
 export default function Monitoring() {
+  const qc = useQueryClient();
   const { data } = useQuery<Device[]>({
     queryKey: ['devices'],
     queryFn: async () => (await api.get('/monitoring/devices')).data,
@@ -49,10 +53,28 @@ export default function Monitoring() {
   const [live, setLive] = useState<Record<string, OnuStatusEvent>>({});
   const [connected, setConnected] = useState(false);
 
+  const { data: subs } = useQuery<SubLite[]>({
+    queryKey: ['subscriptions-lite'],
+    queryFn: async () => (await api.get('/subscriptions')).data,
+    enabled: canManage,
+  });
+
   const portCtl = useMutation({
     mutationFn: ({ id, up }: { id: string; up: boolean }) =>
       api.post(`/monitoring/devices/${id}/port`, { up }),
     onError: () => alert('Gagal mengirim perintah SNMP ke OLT.'),
+  });
+
+  const assign = useMutation({
+    mutationFn: ({ id, subscriptionId }: { id: string; subscriptionId: string | null }) =>
+      api.post(`/monitoring/devices/${id}/assign`, { subscriptionId }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['devices'] }),
+    onError: (e: any) => alert(`Gagal mengaitkan: ${e?.response?.data?.message ?? e?.message}`),
+  });
+
+  const removeDev = useMutation({
+    mutationFn: (id: string) => api.delete(`/monitoring/devices/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['devices'] }),
   });
 
   useEffect(() => {
@@ -110,7 +132,22 @@ export default function Monitoring() {
                 <tr key={r.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3 font-mono text-xs">{r.serialNumber}</td>
                   <td className="px-4 py-3 text-xs text-slate-500">{fmtPort(r.oltIfIndex, r.onuId)}</td>
-                  <td className="px-4 py-3">{r.customerName ?? '—'}</td>
+                  <td className="px-4 py-3">
+                    {canManage ? (
+                      <select
+                        className="input text-xs py-1 min-w-[9rem]"
+                        value={r.subscriptionId ?? ''}
+                        onChange={(e) => assign.mutate({ id: r.id, subscriptionId: e.target.value || null })}
+                      >
+                        <option value="">— belum dikaitkan —</option>
+                        {subs?.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.customerName ?? s.pppoeUser ?? s.id}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (r.customerName ?? '—')}
+                  </td>
                   <td className={`px-4 py-3 ${dbmTone(r.dbm)}`}>
                     {r.dbm == null ? '—' : r.dbm.toFixed(2)}
                   </td>
@@ -143,6 +180,16 @@ export default function Monitoring() {
                             <PowerOff size={16} />
                           </button>
                         </>
+                      )}
+                      {canManage && (
+                        <button
+                          className="btn-ghost text-slate-400 hover:text-rose-600"
+                          disabled={removeDev.isPending}
+                          onClick={() => { if (confirm(`Hapus ONU ${r.serialNumber} dari monitoring?`)) removeDev.mutate(r.id); }}
+                          title="Hapus dari monitoring"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       )}
                     </div>
                   </td>
