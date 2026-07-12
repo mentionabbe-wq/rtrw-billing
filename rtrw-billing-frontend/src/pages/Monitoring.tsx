@@ -311,7 +311,10 @@ function GenieacsPanel() {
 
 /* -------------------- Scan ONU langsung dari OLT (SNMP walk) -------------------- */
 interface OltLite { id: string; name: string; vendor: string }
-interface WalkedOnu { ifIndex: number; onuId: number; dBm: number | null; health: string }
+interface WalkedOnu {
+  ifIndex: number; onuId: number; dBm: number | null; health: string;
+  name: string | null; description: string | null;
+}
 
 function OnuScanPanel() {
   const qc = useQueryClient();
@@ -326,18 +329,23 @@ function OnuScanPanel() {
   });
   const register = useMutation({
     mutationFn: (o: WalkedOnu) =>
-      api.post('/monitoring/devices/register', { oltId, ifIndex: o.ifIndex, onuId: o.onuId, dBm: o.dBm }),
+      api.post('/monitoring/devices/register', {
+        oltId, ifIndex: o.ifIndex, onuId: o.onuId, dBm: o.dBm, name: o.name, description: o.description,
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['devices'] }),
     onError: (e: any) => alert(`Gagal mendaftarkan: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
   });
   const registerAll = async () => {
     if (!scan.data) return;
+    let matched = 0;
     for (const o of scan.data) {
-      await api.post('/monitoring/devices/register', { oltId, ifIndex: o.ifIndex, onuId: o.onuId, dBm: o.dBm })
-        .catch(() => {});
+      const r = await api.post('/monitoring/devices/register', {
+        oltId, ifIndex: o.ifIndex, onuId: o.onuId, dBm: o.dBm, name: o.name, description: o.description,
+      }).catch(() => null);
+      if (r?.data?.matched) matched++;
     }
     qc.invalidateQueries({ queryKey: ['devices'] });
-    alert(`${scan.data.length} ONU didaftarkan ke monitoring.`);
+    alert(`${scan.data.length} ONU didaftarkan — ${matched} otomatis terkait ke pelanggan (via deskripsi = user PPPoE).`);
   };
 
   return (
@@ -365,6 +373,7 @@ function OnuScanPanel() {
               <thead className="sticky top-0 bg-slate-50 text-left text-slate-500">
                 <tr>
                   <th className="px-3 py-2 font-medium">Port</th>
+                  <th className="px-3 py-2 font-medium">Deskripsi</th>
                   <th className="px-3 py-2 font-medium">RX (dBm)</th>
                   <th className="px-3 py-2 font-medium">Health</th>
                   <th className="px-3 py-2 font-medium text-right">Aksi</th>
@@ -373,7 +382,8 @@ function OnuScanPanel() {
               <tbody className="divide-y divide-slate-100">
                 {scan.data.map((o, i) => (
                   <tr key={i}>
-                    <td className="px-3 py-2 font-mono text-xs">{fmtPort(o.ifIndex, o.onuId)}</td>
+                    <td className="px-3 py-2 font-mono text-xs">{o.name ?? fmtPort(o.ifIndex, o.onuId)}</td>
+                    <td className="px-3 py-2 text-xs text-slate-500">{o.description ?? '—'}</td>
                     <td className={`px-3 py-2 ${dbmTone(o.dBm)}`}>{o.dBm == null ? 'LOS' : o.dBm.toFixed(2)}</td>
                     <td className="px-3 py-2"><span className={`badge ${healthTone[o.health] ?? 'bg-slate-100'}`}>{o.health}</span></td>
                     <td className="px-3 py-2 text-right">
@@ -386,7 +396,7 @@ function OnuScanPanel() {
                     </td>
                   </tr>
                 ))}
-                {!scan.data.length && <tr><td colSpan={4} className="px-3 py-6 text-center text-slate-400">Tidak ada ONU terbaca.</td></tr>}
+                {!scan.data.length && <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-400">Tidak ada ONU terbaca.</td></tr>}
               </tbody>
             </table>
           </div>

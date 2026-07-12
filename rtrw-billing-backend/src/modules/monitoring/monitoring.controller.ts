@@ -4,7 +4,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { Device, Olt } from '@database/entities';
+import { Device, Olt, Subscription } from '@database/entities';
 import { JwtAuthGuard } from '@modules/auth/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { Roles } from '@common/decorators/roles.decorator';
@@ -15,8 +15,23 @@ export class MonitoringService {
   constructor(
     @InjectRepository(Device) private readonly devices: Repository<Device>,
     @InjectRepository(Olt) private readonly olts: Repository<Olt>,
+    @InjectRepository(Subscription) private readonly subs: Repository<Subscription>,
     private readonly snmp: SnmpService,
   ) {}
+
+  /**
+   * Cocokkan deskripsi ONU (dari OLT) ke langganan via user PPPoE.
+   * Match case-insensitive & trim. Return subscription atau null.
+   */
+  private async matchSubscription(description?: string | null): Promise<Subscription | null> {
+    const key = (description ?? '').trim();
+    if (!key) return null;
+    const sub = await this.subs
+      .createQueryBuilder('s')
+      .where('LOWER(s.pppoeUser) = LOWER(:k)', { k: key })
+      .getOne();
+    return sub ?? null;
+  }
 
   /** Enable/disable ONU port remotely via SNMP SET (per-vendor OID). */
   async setPort(deviceId: string, up: boolean) {
@@ -61,24 +76,34 @@ export class MonitoringService {
    * Daftarkan ONU hasil scan OLT sebagai perangkat monitoring (idempotent).
    * ONU langsung ikut polling optik 5-menit; pelanggan bisa dikaitkan belakangan.
    */
-  async registerOnu(dto: { oltId: string; ifIndex: number; onuId: number; dBm?: number | null }) {
+  async registerOnu(dto: {
+    oltId: string; ifIndex: number; onuId: number;
+    dBm?: number | null; name?: string | null; description?: string | null;
+  }) {
     const olt = await this.olts.findOne({ where: { id: dto.oltId } });
     if (!olt) throw new NotFoundException('OLT not found');
 
     let d = await this.devices.findOne({
       where: { oltHost: olt.host, oltIfIndex: dto.ifIndex, onuId: dto.onuId },
+      relations: { subscription: true },
     });
     if (!d) {
-      // Label PON/ONU: index C-Data dikodekan 32-bit — 16 bit bawah = nomor sebenarnya.
+      // Label: pakai nama posisi dari OLT bila ada (mis. "gpon 0/0/1 onu 1"),
+      // fallback ke decode index 32-bit (16 bit bawah = nomor sebenarnya).
       const pon = dto.ifIndex > 0xffff ? dto.ifIndex & 0xffff : dto.ifIndex;
       const onu = dto.onuId > 0xffff ? dto.onuId & 0xffff : dto.onuId;
       d = this.devices.create({
         type: 'onu',
-        serialNumber: `PON${pon}-ONU${onu}`,
+        serialNumber: dto.name?.trim() || `PON${pon}-ONU${onu}`,
         oltHost: olt.host,
         oltIfIndex: dto.ifIndex,
         onuId: dto.onuId,
       });
+    }
+    // Auto-match ke pelanggan via deskripsi ONU = user PPPoE (bila belum terkait).
+    if (!d.subscription) {
+      const sub = await this.matchSubscription(dto.description);
+      if (sub) d.subscription = sub;
     }
     if (dto.dBm != null) {
       d.lastRxPower = dto.dBm.toFixed(2);
@@ -86,7 +111,7 @@ export class MonitoringService {
     }
     d.updatedAt = new Date();
     await this.devices.save(d);
-    return { id: d.id, serialNumber: d.serialNumber };
+    return { id: d.id, serialNumber: d.serialNumber, matched: !!d.subscription };
   }
 
   /** Kaitkan/lepas ONU ke pelanggan (langganan). subscriptionId null = lepas. */
@@ -127,7 +152,10 @@ export class MonitoringController {
   /** Daftarkan ONU hasil scan ke tabel perangkat monitoring. */
   @Post('devices/register')
   @Roles('admin', 'operator')
-  register(@Body() body: { oltId: string; ifIndex: number; onuId: number; dBm?: number | null }) {
+  register(@Body() body: {
+    oltId: string; ifIndex: number; onuId: number;
+    dBm?: number | null; name?: string | null; description?: string | null;
+  }) {
     return this.service.registerOnu(body);
   }
 

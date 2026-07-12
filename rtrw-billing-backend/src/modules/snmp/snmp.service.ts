@@ -65,10 +65,18 @@ export class SnmpService {
    */
   async walkOnu(
     olt: OltTarget,
-  ): Promise<Array<{ ifIndex: number; onuId: number; dBm: number | null; health: OpticalReading['health'] }>> {
+  ): Promise<Array<{
+    ifIndex: number; onuId: number; dBm: number | null;
+    health: OpticalReading['health']; name: string | null; description: string | null;
+  }>> {
     const profile = getProfile(olt.vendor);
     const rows = await this.walk(olt, profile.rxPowerOid);
     const base = profile.rxPowerOid.replace(/^\./, '');
+
+    // Tabel label/deskripsi di-index per ifIndex (satu bagian) → join key = ifIndex.
+    const nameMap = await this.walkLabelMap(olt, profile.nameOid);
+    const descMap = await this.walkLabelMap(olt, profile.descOid);
+
     return rows.map(({ oid, value }) => {
       // Suffix index relatif thd base OID: ZTE/Huawei 2 bagian (ifIndex.onuId),
       // C-Data GPON 3 bagian (ponPort.0.onuIdx) — ambil bagian pertama & terakhir.
@@ -78,8 +86,28 @@ export class SnmpService {
       const ifIndex = Number(parts[0]);
       const onuId = Number(parts[parts.length - 1]);
       const dBm = profile.toDbm(Number(value));
-      return { ifIndex, onuId, dBm, health: this.classify(dBm) };
+      return {
+        ifIndex, onuId, dBm, health: this.classify(dBm),
+        name: nameMap[ifIndex] ?? null,
+        description: descMap[ifIndex] ?? null,
+      };
     });
+  }
+
+  /** Walk tabel string (nama/deskripsi ONU) → map { ifIndex: teks }. */
+  private async walkLabelMap(olt: OltTarget, oid?: string): Promise<Record<number, string>> {
+    if (!oid) return {};
+    const rows = await this.walk(olt, oid).catch(() => []);
+    const base = oid.replace(/^\./, '');
+    const map: Record<number, string> = {};
+    for (const { oid: o, value } of rows) {
+      const clean = String(o).replace(/^\./, '');
+      const suffix = clean.startsWith(base) ? clean.slice(base.length + 1) : clean;
+      const ifIndex = Number(suffix.split('.')[0]);
+      const text = String(value ?? '').trim();
+      if (!Number.isNaN(ifIndex) && text) map[ifIndex] = text;
+    }
+    return map;
   }
 
   async readOpticalPower(olt: OltTarget, ifIndex: number, onuId: number): Promise<OpticalReading> {

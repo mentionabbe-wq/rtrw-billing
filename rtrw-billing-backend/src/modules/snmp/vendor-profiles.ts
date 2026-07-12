@@ -27,6 +27,10 @@ export interface VendorProfile {
    * C-Data GPON memakai 3 bagian: `${ifIndex}.0.${onuId}`.
    */
   buildIndex?: (ifIndex: number, onuId: number) => string;
+  /** OID label posisi ONU (mis. "gpon 0/0/1 onu 1"), di-index per ifIndex. Opsional. */
+  nameOid?: string;
+  /** OID deskripsi ONU yang bisa diisi operator (dipakai auto-match ke pelanggan). Opsional. */
+  descOid?: string;
 }
 
 export const VENDOR_PROFILES: Record<OltVendor, VendorProfile> = {
@@ -90,6 +94,9 @@ export const VENDOR_PROFILES: Record<OltVendor, VendorProfile> = {
     // Unit 0.01 dBm; -3000 (=-30 dBm) dipakai firmware sbg sentinel "tak ada data".
     toDbm: (raw) => (NO_SIGNAL.includes(raw) || raw <= -3000 ? null : raw / 100),
     buildIndex: (ifIndex, onuId) => `${ifIndex}.0.${onuId}`,
+    // .1.1.2 = label posisi (gpon 0/0/1 onu 1); .1.1.3 = deskripsi yang diisi operator.
+    nameOid: '1.3.6.1.4.1.17409.2.8.4.1.1.2',
+    descOid: '1.3.6.1.4.1.17409.2.8.4.1.1.3',
   },
 
   // ---------------- Fallback ----------------
