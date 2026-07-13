@@ -97,7 +97,14 @@ export class OltsService {
   async onus(id: string) {
     const o = await this.repo.findOne({ where: { id } });
     if (!o) throw new NotFoundException('OLT not found');
-    return this.snmp.walkOnu(this.target(o));
+    try {
+      return await this.snmp.walkOnu(this.target(o));
+    } catch (e: any) {
+      // SNMP walk gagal (timeout/OLT sibuk) → 400 dgn pesan asli, bukan 500.
+      throw new BadRequestException(
+        `Scan OLT [${o.name}] gagal: ${e?.message ?? String(e)}. Coba lagi — OLT mungkin sibuk.`,
+      );
+    }
   }
 }
 
