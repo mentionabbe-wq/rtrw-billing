@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Delete, Get, Injectable, Module, NotFoundException,
+  BadRequestException, Body, Controller, Delete, Get, Injectable, Module, NotFoundException,
   Param, Patch, Post, UseGuards,
 } from '@nestjs/common';
 import { TypeOrmModule, InjectRepository } from '@nestjs/typeorm';
