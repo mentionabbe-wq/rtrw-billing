@@ -6,7 +6,7 @@ import { TypeOrmModule, InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { IsIn, IsOptional, IsString } from 'class-validator';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { Olt } from '@database/entities';
+import { Device, Olt } from '@database/entities';
 import { CryptoService } from '@common/crypto/crypto.service';
 import { JwtAuthGuard } from '@modules/auth/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
@@ -28,6 +28,7 @@ export class UpsertOltDto {
 export class OltsService {
   constructor(
     @InjectRepository(Olt) private readonly repo: Repository<Olt>,
+    @InjectRepository(Device) private readonly devices: Repository<Device>,
     private readonly crypto: CryptoService,
     private readonly snmp: SnmpService,
   ) {}
@@ -69,6 +70,7 @@ export class OltsService {
   async update(id: string, dto: UpsertOltDto) {
     const o = await this.repo.findOne({ where: { id } });
     if (!o) throw new NotFoundException('OLT not found');
+    const oldHost = o.host;
     if (dto.name !== undefined) o.name = dto.name;
     if (dto.host !== undefined) o.host = dto.host;
     if (dto.vendor !== undefined) o.vendor = dto.vendor;
@@ -76,7 +78,14 @@ export class OltsService {
     if (dto.snmpUser !== undefined) o.snmpUser = dto.snmpUser;
     if (dto.snmpAuthKey) o.snmpAuthEnc = this.crypto.encrypt(dto.snmpAuthKey)!;
     if (dto.snmpPrivKey) o.snmpPrivEnc = this.crypto.encrypt(dto.snmpPrivKey)!;
-    return this.view(await this.repo.save(o));
+    const saved = await this.repo.save(o);
+
+    // IP OLT berubah → ikutkan semua ONU yg menunjuk host lama agar monitoring
+    // tidak putus (device menyimpan oltHost, bukan id).
+    if (dto.host !== undefined && dto.host !== oldHost && oldHost) {
+      await this.devices.update({ oltHost: oldHost }, { oltHost: dto.host });
+    }
+    return this.view(saved);
   }
 
   async remove(id: string) {
@@ -125,7 +134,7 @@ export class OltsController {
 }
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Olt]), SnmpModule],
+  imports: [TypeOrmModule.forFeature([Olt, Device]), SnmpModule],
   controllers: [OltsController],
   providers: [OltsService],
 })
