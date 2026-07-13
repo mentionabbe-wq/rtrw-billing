@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Users, Package, Receipt, Activity, LogOut, Menu, X, Wifi, Network,
-  Settings as SettingsIcon, ScrollText, UserCog, ShieldCheck, RadioTower, Ticket,
+  Settings as SettingsIcon, ScrollText, UserCog, ShieldCheck, RadioTower, Ticket, Wallet,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuth } from '@/store/auth';
@@ -23,6 +23,7 @@ const nav: { to: string; label: string; icon: any; end?: boolean; cap?: Capabili
   { to: '/pppoe', label: 'PPPoE Aktif', icon: Wifi },
   { to: '/packages', label: 'Paket', icon: Package },
   { to: '/invoices', label: 'Tagihan', icon: Receipt },
+  { to: '/finance', label: 'Laporan Keuangan', icon: Wallet, cap: 'billing.write' },
   { to: '/monitoring', label: 'Monitoring ONU', icon: Activity },
   { to: '/genieacs', label: 'ONU TR-069', icon: RadioTower },
   { to: '/hotspot', label: 'Hotspot Voucher', icon: Ticket },

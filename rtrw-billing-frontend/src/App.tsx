@@ -19,6 +19,7 @@ import Security from '@/pages/Security';
 import Portal from '@/pages/Portal';
 import Hotspot from '@/pages/Hotspot';
 import VoucherStore from '@/pages/VoucherStore';
+import Finance from '@/pages/Finance';
 
 function RequireCap({ cap, children }: { cap: Capability; children: ReactNode }) {
   const allowed = useCan(cap);
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="/pppoe" element={<PppoeActive />} />
         <Route path="/packages" element={<Packages />} />
         <Route path="/invoices" element={<Invoices />} />
+        <Route path="/finance" element={<RequireCap cap="billing.write"><Finance /></RequireCap>} />
         <Route path="/monitoring" element={<Monitoring />} />
         <Route path="/genieacs" element={<Genieacs />} />
         <Route path="/settings" element={<RequireCap cap="settings.manage"><Settings /></RequireCap>} />

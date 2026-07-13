@@ -10,6 +10,10 @@ import { getMonitoringSocket, OnuStatusEvent } from '@/lib/socket';
 
 interface RouterLite { id: string; name: string }
 interface IfaceLite { name: string; type: string; running: boolean }
+interface OnuProblem {
+  id: string; serialNumber: string; customerName: string | null;
+  lastRxPower: string | null; lastStatus: string | null; health: 'warning' | 'critical';
+}
 
 interface Stats {
   totalCustomers: number;
@@ -41,6 +45,18 @@ export default function Dashboard() {
     queryFn: async () => (await api.get('/dashboard/stats')).data,
   });
 
+  // Seed status ONU dari DB supaya widget tidak 0 sebelum event live datang.
+  const { data: onuProblems } = useQuery<OnuProblem[]>({
+    queryKey: ['onu-problems'],
+    queryFn: async () => (await api.get('/dashboard/onu-problems')).data,
+    refetchInterval: 60000,
+  });
+  const { data: devices } = useQuery<{ id: string; lastRxPower: string | null; lastStatus: string | null }[]>({
+    queryKey: ['devices'],
+    queryFn: async () => (await api.get('/monitoring/devices')).data,
+    refetchInterval: 60000,
+  });
+
   const [live, setLive] = useState<Record<string, OnuStatusEvent['health']>>({});
 
   useEffect(() => {
@@ -53,7 +69,19 @@ export default function Dashboard() {
     };
   }, []);
 
-  const liveCounts = Object.values(live).reduce(
+  // Gabung status DB (seed) dengan event live (override per device).
+  const healthByDevice: Record<string, 'ok' | 'warning' | 'critical'> = {};
+  for (const d of devices ?? []) {
+    const dbm = d.lastRxPower != null ? Number(d.lastRxPower) : null;
+    let h: 'ok' | 'warning' | 'critical' = 'ok';
+    if (d.lastStatus === 'los' || d.lastStatus === 'offline') h = 'critical';
+    else if (dbm != null && dbm < -27) h = 'critical';
+    else if (dbm != null && dbm < -25) h = 'warning';
+    healthByDevice[d.id] = h;
+  }
+  for (const [id, h] of Object.entries(live)) healthByDevice[id] = h as any;
+
+  const liveCounts = Object.values(healthByDevice).reduce(
     (acc, h) => ({ ...acc, [h]: (acc[h] || 0) + 1 }),
     {} as Record<string, number>,
   );
@@ -91,9 +119,53 @@ export default function Dashboard() {
             </li>
           </ul>
           <p className="mt-4 text-xs text-slate-400">
-            Diperbarui realtime via Socket.IO (event <code>onu:status</code>).
+            Status dibaca dari database + diperbarui realtime via Socket.IO.
           </p>
         </div>
+      </div>
+
+      {/* ONU bermasalah (LOS/Warning) */}
+      <div className="card p-5">
+        <h2 className="mb-4 flex items-center gap-2 font-medium">
+          <Radio size={16} className="text-rose-500" /> ONU Bermasalah
+          {onuProblems && onuProblems.length > 0 && (
+            <span className="badge bg-rose-50 text-rose-700">{onuProblems.length}</span>
+          )}
+        </h2>
+        {!onuProblems?.length ? (
+          <p className="py-6 text-center text-sm text-slate-400">
+            Semua ONU sehat — tidak ada yang LOS atau warning. 🎉
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="text-left text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Serial ONU</th>
+                  <th className="px-3 py-2 font-medium">Pelanggan</th>
+                  <th className="px-3 py-2 font-medium">RX (dBm)</th>
+                  <th className="px-3 py-2 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {onuProblems.map((o) => (
+                  <tr key={o.id}>
+                    <td className="px-3 py-2 font-mono text-xs">{o.serialNumber}</td>
+                    <td className="px-3 py-2">{o.customerName ?? '—'}</td>
+                    <td className={`px-3 py-2 font-semibold ${o.health === 'critical' ? 'text-rose-600' : 'text-amber-600'}`}>
+                      {o.lastRxPower != null ? Number(o.lastRxPower).toFixed(2) : 'LOS'}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`badge ${o.health === 'critical' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>
+                        {o.health === 'critical' ? 'Critical / LOS' : 'Warning'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
