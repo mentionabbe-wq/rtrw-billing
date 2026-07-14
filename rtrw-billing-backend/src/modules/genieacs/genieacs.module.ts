@@ -5,7 +5,7 @@ import {
 import { TypeOrmModule, InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { Router, Subscription } from '@database/entities';
+import { Device, Router, Subscription } from '@database/entities';
 import { JwtAuthGuard } from '@modules/auth/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { Roles } from '@common/decorators/roles.decorator';
@@ -29,14 +29,16 @@ export class GenieacsService {
     private readonly mikrotik: MikrotikService,
     @InjectRepository(Router) private readonly routers: Repository<Router>,
     @InjectRepository(Subscription) private readonly subs: Repository<Subscription>,
+    @InjectRepository(Device) private readonly devices: Repository<Device>,
   ) {}
 
   /**
    * Daftar ONU TR-069 + deteksi pelanggan OTOMATIS via IP WAN:
    * IP ONU → sesi PPPoE aktif (Mikrotik) → user PPPoE → langganan → pelanggan.
+   * Juga gabungkan redaman optik (RX) dari device monitoring OLT via langganan.
    */
   async listDevicesWithCustomer() {
-    const devices = await this.listDevices();
+    const acsDevices = await this.listDevices();
 
     // Peta IP → user PPPoE dari semua router online.
     const ipToUser = new Map<string, string>();
@@ -51,17 +53,48 @@ export class GenieacsService {
       }),
     );
 
-    // Peta user PPPoE (lowercase) → nama pelanggan.
+    // Peta user PPPoE (lowercase) → {nama pelanggan, id langganan}.
     const allSubs = await this.subs.find({ relations: { customer: true } });
-    const userToCustomer = new Map<string, string>();
+    const userToSub = new Map<string, { name: string; subId: string }>();
     for (const s of allSubs) {
-      if (s.pppoeUser) userToCustomer.set(s.pppoeUser.toLowerCase(), s.customer?.fullName ?? s.pppoeUser);
+      if (s.pppoeUser) {
+        userToSub.set(s.pppoeUser.toLowerCase(), {
+          name: s.customer?.fullName ?? s.pppoeUser,
+          subId: String(s.id),
+        });
+      }
     }
 
-    return devices.map((d) => {
+    // Peta langganan → device monitoring OLT (redaman terakhir hasil polling).
+    const onus = await this.devices.find({
+      where: { type: 'onu' },
+      relations: { subscription: true },
+    });
+    const subToOnu = new Map<string, Device>();
+    for (const d of onus) {
+      if (d.subscription?.id) subToOnu.set(String(d.subscription.id), d);
+    }
+    const classify = (d?: Device): 'ok' | 'warning' | 'critical' | null => {
+      if (!d) return null;
+      if (d.lastStatus === 'los' || d.lastStatus === 'offline') return 'critical';
+      const dbm = d.lastRxPower != null ? Number(d.lastRxPower) : null;
+      if (dbm == null) return null;
+      if (dbm < -27) return 'critical';
+      if (dbm < -25) return 'warning';
+      return 'ok';
+    };
+
+    return acsDevices.map((d) => {
       const user = d.ip ? ipToUser.get(d.ip) : undefined;
-      const customerName = user ? userToCustomer.get(user.toLowerCase()) ?? user : null;
-      return { ...d, pppoeUser: user ?? null, customerName };
+      const sub = user ? userToSub.get(user.toLowerCase()) : undefined;
+      const onu = sub ? subToOnu.get(sub.subId) : undefined;
+      return {
+        ...d,
+        pppoeUser: user ?? null,
+        customerName: sub?.name ?? (user || null),
+        rxPower: onu?.lastRxPower != null ? Number(onu.lastRxPower) : null,
+        opticalHealth: classify(onu),
+      };
     });
   }
 
@@ -241,7 +274,7 @@ export class GenieacsController {
 }
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Router, Subscription]), MikrotikModule],
+  imports: [TypeOrmModule.forFeature([Router, Subscription, Device]), MikrotikModule],
   controllers: [GenieacsController],
   providers: [GenieacsService],
 })

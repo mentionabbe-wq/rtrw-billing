@@ -1,23 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Activity, Wifi, WifiOff, Power, PowerOff, Loader2, Radar, Users2, Plus, RefreshCw, Router as RouterIcon, Trash2,
+  Wifi, Power, Loader2, Radar, Users2, Plus, RefreshCw, Router as RouterIcon,
   RotateCw, X,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCan } from '@/lib/rbac';
-import { getMonitoringSocket, OnuStatusEvent } from '@/lib/socket';
-
-interface Device {
-  id: string;
-  serialNumber: string;
-  customerName?: string;
-  subscriptionId?: string | null;
-  lastRxPower: string | null;
-  lastStatus: string | null;
-  oltIfIndex: number | null;
-  onuId: number | null;
-}
 
 /** Index C-Data dikodekan 32-bit — 16 bit bawah = nomor port/onu sebenarnya. */
 const decodeIdx = (v: number | null) => (v == null ? null : v > 0xffff ? v & 0xffff : v);
@@ -40,174 +28,14 @@ function dbmTone(dbm: number | null) {
   return 'text-emerald-600 font-semibold';
 }
 
-interface SubLite { id: string; customerName?: string; pppoeUser?: string }
-
 export default function Monitoring() {
-  const qc = useQueryClient();
-  const { data } = useQuery<Device[]>({
-    queryKey: ['devices'],
-    queryFn: async () => (await api.get('/monitoring/devices')).data,
-  });
-
-  const canControl = useCan('monitoring.control');
   const canManage = useCan('settings.manage');
-  const [live, setLive] = useState<Record<string, OnuStatusEvent>>({});
-  const [connected, setConnected] = useState(false);
-
-  const { data: subs } = useQuery<SubLite[]>({
-    queryKey: ['subscriptions-lite'],
-    queryFn: async () => (await api.get('/subscriptions')).data,
-    enabled: canManage,
-  });
-
-  const portCtl = useMutation({
-    mutationFn: ({ id, up }: { id: string; up: boolean }) =>
-      api.post(`/monitoring/devices/${id}/port`, { up }),
-    onError: () => alert('Gagal mengirim perintah SNMP ke OLT.'),
-  });
-
-  const assign = useMutation({
-    mutationFn: ({ id, subscriptionId }: { id: string; subscriptionId: string | null }) =>
-      api.post(`/monitoring/devices/${id}/assign`, { subscriptionId }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['devices'] }),
-    onError: (e: any) => alert(`Gagal mengaitkan: ${e?.response?.data?.message ?? e?.message}`),
-  });
-
-  const removeDev = useMutation({
-    mutationFn: (id: string) => api.delete(`/monitoring/devices/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['devices'] }),
-  });
-
-  useEffect(() => {
-    const socket = getMonitoringSocket();
-    const onConnect = () => setConnected(true);
-    const onDisconnect = () => setConnected(false);
-    const onStatus = (e: OnuStatusEvent) => setLive((p) => ({ ...p, [e.deviceId]: e }));
-    socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
-    socket.on('onu:status', onStatus);
-    setConnected(socket.connected);
-    return () => {
-      socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
-      socket.off('onu:status', onStatus);
-    };
-  }, []);
-
-  const rows = useMemo(
-    () =>
-      (data ?? []).map((d) => {
-        const ev = live[d.id];
-        const dbm = ev ? ev.dBm : d.lastRxPower != null ? Number(d.lastRxPower) : null;
-        const health = ev?.health ?? (d.lastStatus === 'los' ? 'critical' : 'ok');
-        return { ...d, dbm, health };
-      }),
-    [data, live],
-  );
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Monitoring ONU</h1>
-        <span className={`badge ${connected ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-          {connected ? <Wifi size={14} className="mr-1" /> : <WifiOff size={14} className="mr-1" />}
-          {connected ? 'Live' : 'Terputus'}
-        </span>
-      </div>
+      <h1 className="text-xl font-semibold">Monitoring ONU</h1>
 
-      <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-slate-500">
-              <tr>
-                <th className="px-4 py-3 font-medium">Serial ONU</th>
-                <th className="px-4 py-3 font-medium">Port</th>
-                <th className="px-4 py-3 font-medium">Pelanggan</th>
-                <th className="px-4 py-3 font-medium">RX Power (dBm)</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium text-right">Port ONU</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {rows.map((r) => (
-                <tr key={r.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-mono text-xs">{r.serialNumber}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500">{fmtPort(r.oltIfIndex, r.onuId)}</td>
-                  <td className="px-4 py-3">
-                    {canManage ? (
-                      <select
-                        className="input text-xs py-1 min-w-[9rem]"
-                        value={r.subscriptionId ?? ''}
-                        onChange={(e) => assign.mutate({ id: r.id, subscriptionId: e.target.value || null })}
-                      >
-                        <option value="">— belum dikaitkan —</option>
-                        {subs?.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.customerName ?? s.pppoeUser ?? s.id}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (r.customerName ?? '—')}
-                  </td>
-                  <td className={`px-4 py-3 ${dbmTone(r.dbm)}`}>
-                    {r.dbm == null ? '—' : r.dbm.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`badge ${healthTone[r.health] ?? 'bg-slate-100'}`}>
-                      <Activity size={12} className="mr-1" /> {r.health}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-2">
-                      {!canControl && <span className="text-xs text-slate-400">—</span>}
-                      {canControl && (
-                        <>
-                          <button
-                            className="btn-ghost text-emerald-600"
-                            disabled={portCtl.isPending}
-                            onClick={() => portCtl.mutate({ id: r.id, up: true })}
-                            title="Enable port (SNMP)"
-                          >
-                            <Power size={16} />
-                          </button>
-                          <button
-                            className="btn-ghost text-rose-600"
-                            disabled={portCtl.isPending}
-                            onClick={() => {
-                              if (confirm(`Nonaktifkan port ONU ${r.serialNumber}?`)) portCtl.mutate({ id: r.id, up: false });
-                            }}
-                            title="Disable port (SNMP)"
-                          >
-                            <PowerOff size={16} />
-                          </button>
-                        </>
-                      )}
-                      {canManage && (
-                        <button
-                          className="btn-ghost text-slate-400 hover:text-rose-600"
-                          disabled={removeDev.isPending}
-                          onClick={() => { if (confirm(`Hapus ONU ${r.serialNumber} dari monitoring?`)) removeDev.mutate(r.id); }}
-                          title="Hapus dari monitoring"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {!rows.length && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Belum ada perangkat ONU — scan OLT di bawah lalu klik "Daftarkan".</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <p className="text-xs text-slate-400">
-        Angka RX power diperbarui realtime dari worker SNMP backend (event <code>onu:status</code>).
-        Ambang: &lt; −25 dBm warning, &lt; −27 dBm critical.
-      </p>
+      <GenieacsPanel />
 
       {canManage && (
         <div className="grid gap-5 lg:grid-cols-2">
@@ -215,8 +43,6 @@ export default function Monitoring() {
           <LiveSessionsPanel />
         </div>
       )}
-
-      {canManage && <GenieacsPanel />}
     </div>
   );
 }
@@ -234,6 +60,8 @@ interface AcsDevice {
   online: boolean;
   customerName?: string | null;
   pppoeUser?: string | null;
+  rxPower?: number | null;
+  opticalHealth?: 'ok' | 'warning' | 'critical' | null;
 }
 interface AcsDetail extends AcsDevice { password: string | null; ssidPath: string | null; passPath: string | null }
 
@@ -270,7 +98,8 @@ function GenieacsPanel() {
         </button>
       </div>
       <p className="mb-3 text-xs text-slate-400">
-        ONU yang lapor via TR-069 ke GenieACS. Pelanggan terdeteksi otomatis dari IP WAN → sesi PPPoE.
+        Pelanggan terdeteksi otomatis dari IP WAN → sesi PPPoE. Power (RX) dari polling OLT
+        via ONU yang didaftarkan di Scan (ambang: &lt; −25 warning, &lt; −27 critical).
         Ubah SSID/password WiFi, refresh, atau reboot ONU dari sini.
       </p>
 
@@ -294,6 +123,7 @@ function GenieacsPanel() {
                 <th className="px-3 py-2 font-medium">Pelanggan</th>
                 <th className="px-3 py-2 font-medium">SSID</th>
                 <th className="px-3 py-2 font-medium">IP WAN</th>
+                <th className="px-3 py-2 font-medium">Power (dBm)</th>
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium">Lapor</th>
                 {canControl && <th className="px-3 py-2 font-medium text-right">Aksi</th>}
@@ -314,10 +144,20 @@ function GenieacsPanel() {
                   </td>
                   <td className="px-3 py-2 text-xs">{d.ssid ?? '—'}</td>
                   <td className="px-3 py-2 font-mono text-xs">{d.ip ?? '—'}</td>
+                  <td className={`px-3 py-2 ${dbmTone(d.rxPower ?? null)}`}>
+                    {d.rxPower != null ? d.rxPower.toFixed(2) : '—'}
+                  </td>
                   <td className="px-3 py-2">
-                    <span className={`badge ${d.online ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                      {d.online ? 'online' : 'offline'}
-                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      <span className={`badge ${d.online ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                        {d.online ? 'online' : 'offline'}
+                      </span>
+                      {d.opticalHealth && (
+                        <span className={`badge ${healthTone[d.opticalHealth] ?? 'bg-slate-100 text-slate-500'}`}>
+                          {d.opticalHealth === 'ok' ? 'normal' : d.opticalHealth}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-3 py-2 text-xs text-slate-500">
                     {d.lastInform ? new Date(d.lastInform).toLocaleString('id-ID') : '—'}
@@ -337,7 +177,7 @@ function GenieacsPanel() {
                 </tr>
               ))}
               {!data.length && (
-                <tr><td colSpan={canControl ? 7 : 6} className="px-3 py-6 text-center text-slate-400">
+                <tr><td colSpan={canControl ? 8 : 7} className="px-3 py-6 text-center text-slate-400">
                   Belum ada ONU yang lapor ke GenieACS. Isi ACS server di ONU: http://IP-SERVER:7547
                 </td></tr>
               )}
