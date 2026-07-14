@@ -232,6 +232,8 @@ interface AcsDevice {
   ip: string | null;
   lastInform: string | null;
   online: boolean;
+  customerName?: string | null;
+  pppoeUser?: string | null;
 }
 interface AcsDetail extends AcsDevice { password: string | null; ssidPath: string | null; passPath: string | null }
 
@@ -268,7 +270,8 @@ function GenieacsPanel() {
         </button>
       </div>
       <p className="mb-3 text-xs text-slate-400">
-        ONU yang lapor via TR-069 ke GenieACS. Ubah SSID/password WiFi, refresh, atau reboot ONU dari sini.
+        ONU yang lapor via TR-069 ke GenieACS. Pelanggan terdeteksi otomatis dari IP WAN → sesi PPPoE.
+        Ubah SSID/password WiFi, refresh, atau reboot ONU dari sini.
       </p>
 
       {isLoading && <p className="text-sm text-slate-400 py-4 text-center">Memuat…</p>}
@@ -288,6 +291,7 @@ function GenieacsPanel() {
             <thead className="sticky top-0 bg-slate-50 text-left text-slate-500">
               <tr>
                 <th className="px-3 py-2 font-medium">Serial / Model</th>
+                <th className="px-3 py-2 font-medium">Pelanggan</th>
                 <th className="px-3 py-2 font-medium">SSID</th>
                 <th className="px-3 py-2 font-medium">IP WAN</th>
                 <th className="px-3 py-2 font-medium">Status</th>
@@ -301,6 +305,12 @@ function GenieacsPanel() {
                   <td className="px-3 py-2">
                     <div className="font-mono text-xs">{d.serial ?? '—'}</div>
                     <div className="text-xs text-slate-400">{[d.manufacturer, d.model ?? d.software].filter(Boolean).join(' ')}</div>
+                  </td>
+                  <td className="px-3 py-2">
+                    {d.customerName
+                      ? <span className="text-slate-700">{d.customerName}</span>
+                      : <span className="text-xs text-slate-400">— tak terdeteksi —</span>}
+                    {d.pppoeUser && <div className="text-xs text-slate-400 font-mono">{d.pppoeUser}</div>}
                   </td>
                   <td className="px-3 py-2 text-xs">{d.ssid ?? '—'}</td>
                   <td className="px-3 py-2 font-mono text-xs">{d.ip ?? '—'}</td>
@@ -327,7 +337,7 @@ function GenieacsPanel() {
                 </tr>
               ))}
               {!data.length && (
-                <tr><td colSpan={canControl ? 6 : 5} className="px-3 py-6 text-center text-slate-400">
+                <tr><td colSpan={canControl ? 7 : 6} className="px-3 py-6 text-center text-slate-400">
                   Belum ada ONU yang lapor ke GenieACS. Isi ACS server di ONU: http://IP-SERVER:7547
                 </td></tr>
               )}

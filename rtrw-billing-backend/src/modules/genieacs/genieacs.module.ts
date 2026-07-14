@@ -2,11 +2,16 @@ import {
   BadRequestException, Body, Controller, Get, Injectable, Logger, Module,
   Param, Post, UseGuards,
 } from '@nestjs/common';
+import { TypeOrmModule, InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Router, Subscription } from '@database/entities';
 import { JwtAuthGuard } from '@modules/auth/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { Roles } from '@common/decorators/roles.decorator';
 import { IntegrationsService } from '@modules/integrations/integrations.service';
+import { MikrotikModule } from '@modules/mikrotik/mikrotik.module';
+import { MikrotikService } from '@modules/mikrotik/mikrotik.service';
 
 /**
  * Integrasi GenieACS via NBI REST API (TR-069). Aplikasi ini "menyetir"
@@ -19,7 +24,46 @@ import { IntegrationsService } from '@modules/integrations/integrations.service'
 @Injectable()
 export class GenieacsService {
   private readonly logger = new Logger(GenieacsService.name);
-  constructor(private readonly integrations: IntegrationsService) {}
+  constructor(
+    private readonly integrations: IntegrationsService,
+    private readonly mikrotik: MikrotikService,
+    @InjectRepository(Router) private readonly routers: Repository<Router>,
+    @InjectRepository(Subscription) private readonly subs: Repository<Subscription>,
+  ) {}
+
+  /**
+   * Daftar ONU TR-069 + deteksi pelanggan OTOMATIS via IP WAN:
+   * IP ONU → sesi PPPoE aktif (Mikrotik) → user PPPoE → langganan → pelanggan.
+   */
+  async listDevicesWithCustomer() {
+    const devices = await this.listDevices();
+
+    // Peta IP → user PPPoE dari semua router online.
+    const ipToUser = new Map<string, string>();
+    const onlineRouters = await this.routers.find({ where: { status: 'online' } });
+    await Promise.all(
+      onlineRouters.map(async (r) => {
+        try {
+          for (const s of await this.mikrotik.listActive(r)) {
+            if (s.address) ipToUser.set(String(s.address), String(s.name));
+          }
+        } catch { /* skip router offline/error */ }
+      }),
+    );
+
+    // Peta user PPPoE (lowercase) → nama pelanggan.
+    const allSubs = await this.subs.find({ relations: { customer: true } });
+    const userToCustomer = new Map<string, string>();
+    for (const s of allSubs) {
+      if (s.pppoeUser) userToCustomer.set(s.pppoeUser.toLowerCase(), s.customer?.fullName ?? s.pppoeUser);
+    }
+
+    return devices.map((d) => {
+      const user = d.ip ? ipToUser.get(d.ip) : undefined;
+      const customerName = user ? userToCustomer.get(user.toLowerCase()) ?? user : null;
+      return { ...d, pppoeUser: user ?? null, customerName };
+    });
+  }
 
   /** URL NBI + header auth efektif (DB dulu, env fallback). */
   private async client(): Promise<{ base: string; headers: Record<string, string> }> {
@@ -178,7 +222,7 @@ export class GenieacsService {
 export class GenieacsController {
   constructor(private readonly service: GenieacsService) {}
 
-  @Get('devices') list() { return this.service.listDevices(); }
+  @Get('devices') list() { return this.service.listDevicesWithCustomer(); }
   @Get('devices/:id') get(@Param('id') id: string) { return this.service.getDevice(id); }
 
   @Post('devices/:id/wifi')
@@ -197,6 +241,7 @@ export class GenieacsController {
 }
 
 @Module({
+  imports: [TypeOrmModule.forFeature([Router, Subscription]), MikrotikModule],
   controllers: [GenieacsController],
   providers: [GenieacsService],
 })
