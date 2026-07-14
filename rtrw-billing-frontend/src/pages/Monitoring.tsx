@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Activity, Wifi, WifiOff, Power, PowerOff, Loader2, Radar, Users2, Plus, RefreshCw, Router as RouterIcon, Trash2,
+  RotateCw, X,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCan } from '@/lib/rbac';
@@ -232,13 +233,28 @@ interface AcsDevice {
   lastInform: string | null;
   online: boolean;
 }
+interface AcsDetail extends AcsDevice { password: string | null; ssidPath: string | null; passPath: string | null }
 
 function GenieacsPanel() {
+  const qc = useQueryClient();
+  const canControl = useCan('monitoring.control');
+  const [wifiFor, setWifiFor] = useState<AcsDevice | null>(null);
+
   const { data, isLoading, error, refetch, isFetching } = useQuery<AcsDevice[]>({
     queryKey: ['genieacs-devices'],
     queryFn: async () => (await api.get('/genieacs/devices')).data,
     retry: false,
     refetchInterval: 60000,
+  });
+
+  const act = useMutation({
+    mutationFn: ({ id, op }: { id: string; op: 'reboot' | 'refresh' }) =>
+      api.post(`/genieacs/devices/${encodeURIComponent(id)}/${op}`),
+    onSuccess: (_r, v) => {
+      qc.invalidateQueries({ queryKey: ['genieacs-devices'] });
+      alert(v.op === 'reboot' ? 'Perintah reboot dikirim ke ONU.' : 'Refresh diminta — data diperbarui saat ONU inform.');
+    },
+    onError: (e: any) => alert(`Gagal: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
   });
 
   return (
@@ -247,12 +263,12 @@ function GenieacsPanel() {
         <h2 className="flex items-center gap-2 font-medium">
           <RouterIcon size={16} /> ONU TR-069 (GenieACS)
         </h2>
-        <button className="btn-ghost text-sm" onClick={() => refetch()} disabled={isFetching} title="Refresh">
+        <button className="btn-ghost text-sm" onClick={() => refetch()} disabled={isFetching} title="Refresh daftar">
           {isFetching ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
         </button>
       </div>
       <p className="mb-3 text-xs text-slate-400">
-        ONU yang lapor via TR-069 ke GenieACS — serial, model, SSID, IP WAN. Kelola detail (WiFi/reboot) di menu ACS.
+        ONU yang lapor via TR-069 ke GenieACS. Ubah SSID/password WiFi, refresh, atau reboot ONU dari sini.
       </p>
 
       {isLoading && <p className="text-sm text-slate-400 py-4 text-center">Memuat…</p>}
@@ -271,19 +287,21 @@ function GenieacsPanel() {
           <table className="min-w-full text-sm">
             <thead className="sticky top-0 bg-slate-50 text-left text-slate-500">
               <tr>
-                <th className="px-3 py-2 font-medium">Serial</th>
-                <th className="px-3 py-2 font-medium">Model</th>
+                <th className="px-3 py-2 font-medium">Serial / Model</th>
                 <th className="px-3 py-2 font-medium">SSID</th>
                 <th className="px-3 py-2 font-medium">IP WAN</th>
                 <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 font-medium">Lapor Terakhir</th>
+                <th className="px-3 py-2 font-medium">Lapor</th>
+                {canControl && <th className="px-3 py-2 font-medium text-right">Aksi</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {data.map((d) => (
                 <tr key={d.id} className="hover:bg-slate-50">
-                  <td className="px-3 py-2 font-mono text-xs">{d.serial ?? '—'}</td>
-                  <td className="px-3 py-2 text-xs">{[d.manufacturer, d.model ?? d.software].filter(Boolean).join(' ') || '—'}</td>
+                  <td className="px-3 py-2">
+                    <div className="font-mono text-xs">{d.serial ?? '—'}</div>
+                    <div className="text-xs text-slate-400">{[d.manufacturer, d.model ?? d.software].filter(Boolean).join(' ')}</div>
+                  </td>
                   <td className="px-3 py-2 text-xs">{d.ssid ?? '—'}</td>
                   <td className="px-3 py-2 font-mono text-xs">{d.ip ?? '—'}</td>
                   <td className="px-3 py-2">
@@ -294,10 +312,22 @@ function GenieacsPanel() {
                   <td className="px-3 py-2 text-xs text-slate-500">
                     {d.lastInform ? new Date(d.lastInform).toLocaleString('id-ID') : '—'}
                   </td>
+                  {canControl && (
+                    <td className="px-3 py-2">
+                      <div className="flex justify-end gap-1">
+                        <button className="btn-ghost text-brand-600" title="Ubah WiFi" onClick={() => setWifiFor(d)}><Wifi size={15} /></button>
+                        <button className="btn-ghost" title="Refresh data ONU" disabled={act.isPending} onClick={() => act.mutate({ id: d.id, op: 'refresh' })}><RotateCw size={15} /></button>
+                        <button className="btn-ghost text-rose-600" title="Reboot ONU" disabled={act.isPending}
+                          onClick={() => { if (confirm(`Reboot ONU ${d.serial ?? d.id}?`)) act.mutate({ id: d.id, op: 'reboot' }); }}>
+                          <Power size={15} />
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
               {!data.length && (
-                <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-400">
+                <tr><td colSpan={canControl ? 6 : 5} className="px-3 py-6 text-center text-slate-400">
                   Belum ada ONU yang lapor ke GenieACS. Isi ACS server di ONU: http://IP-SERVER:7547
                 </td></tr>
               )}
@@ -305,6 +335,58 @@ function GenieacsPanel() {
           </table>
         </div>
       )}
+
+      {wifiFor && <AcsWifiModal device={wifiFor} onClose={() => setWifiFor(null)}
+        onSaved={() => { setWifiFor(null); qc.invalidateQueries({ queryKey: ['genieacs-devices'] }); }} />}
+    </div>
+  );
+}
+
+function AcsWifiModal({ device, onClose, onSaved }: { device: AcsDevice; onClose: () => void; onSaved: () => void }) {
+  const { data: detail, isLoading } = useQuery<AcsDetail>({
+    queryKey: ['acs-device', device.id],
+    queryFn: async () => (await api.get(`/genieacs/devices/${encodeURIComponent(device.id)}`)).data,
+    retry: false,
+  });
+  const save = useMutation({
+    mutationFn: (body: { ssid?: string; password?: string }) =>
+      api.post(`/genieacs/devices/${encodeURIComponent(device.id)}/wifi`, body),
+    onSuccess: () => { alert('Perintah ubah WiFi dikirim ke ONU.'); onSaved(); },
+    onError: (e: any) => alert(`Gagal: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
+      <div className="card w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-semibold">Ubah WiFi — {device.serial ?? device.id}</h2>
+          <button className="btn-ghost" onClick={onClose}><X size={18} /></button>
+        </div>
+        {isLoading ? (
+          <p className="py-6 text-center text-slate-400">Memuat parameter…</p>
+        ) : (
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            save.mutate({
+              ssid: (fd.get('ssid') as string) || undefined,
+              password: (fd.get('password') as string) || undefined,
+            });
+          }} className="space-y-3">
+            <label className="block text-xs text-slate-500">Nama WiFi (SSID)
+              <input name="ssid" className="input mt-1" defaultValue={detail?.ssid ?? ''} placeholder="Nama WiFi" />
+            </label>
+            <label className="block text-xs text-slate-500">Password WiFi
+              <input name="password" className="input mt-1 font-mono" defaultValue={detail?.password ?? ''} placeholder="Kosongkan = tidak diubah" />
+            </label>
+            {!detail?.ssidPath && <p className="text-xs text-amber-600">Parameter WiFi tidak terdeteksi pada ONU ini.</p>}
+            <button className="btn-primary w-full" disabled={save.isPending}>
+              {save.isPending ? <Loader2 className="animate-spin" size={16} /> : <Wifi size={16} />} Terapkan ke ONU
+            </button>
+            <p className="text-xs text-slate-400">Dikirim via connection-request; bila ONU offline, diterapkan saat online berikutnya.</p>
+          </form>
+        )}
+      </div>
     </div>
   );
 }

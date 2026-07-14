@@ -11,7 +11,6 @@ import PppoeActive from '@/pages/PppoeActive';
 import Packages from '@/pages/Packages';
 import Invoices from '@/pages/Invoices';
 import Monitoring from '@/pages/Monitoring';
-import Genieacs from '@/pages/Genieacs';
 import Settings from '@/pages/Settings';
 import Audit from '@/pages/Audit';
 import Users from '@/pages/Users';
@@ -47,7 +46,8 @@ export default function App() {
         <Route path="/invoices" element={<Invoices />} />
         <Route path="/finance" element={<RequireCap cap="billing.write"><Finance /></RequireCap>} />
         <Route path="/monitoring" element={<Monitoring />} />
-        <Route path="/genieacs" element={<Genieacs />} />
+        {/* /genieacs digabung ke /monitoring — redirect utk link lama */}
+        <Route path="/genieacs" element={<Navigate to="/monitoring" replace />} />
         <Route path="/settings" element={<RequireCap cap="settings.manage"><Settings /></RequireCap>} />
         <Route path="/audit" element={<RequireCap cap="audit.view"><Audit /></RequireCap>} />
         <Route path="/users" element={<RequireCap cap="users.manage"><Users /></RequireCap>} />
