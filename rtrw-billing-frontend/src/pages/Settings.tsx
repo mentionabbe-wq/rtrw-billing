@@ -473,6 +473,7 @@ interface IntegrationSettings {
     adminPhone: string; notifyEnabled: boolean;
   };
   genieacs: { url: string; username: string; hasPassword: boolean; fromEnv: boolean };
+  telegram: { hasBotToken: boolean; chatId: string; notifyEnabled: boolean };
 }
 
 function ConfiguredBadge({ ok, fromEnv }: { ok: boolean; fromEnv?: boolean }) {
@@ -517,6 +518,12 @@ function IntegrationsPanel() {
     onError: (e: any) => alert(`GenieACS gagal: ${e?.response?.data?.message ?? e.message}`),
   });
 
+  const testTelegram = useMutation({
+    mutationFn: () => api.post('/settings/integrations/telegram/test'),
+    onSuccess: () => alert('Telegram terhubung ✓ — cek pesan tes di chat Anda.'),
+    onError: (e: any) => alert(`Telegram gagal: ${e?.response?.data?.message ?? e.message}`),
+  });
+
   function onSubmitTripay(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -548,6 +555,17 @@ function IntegrationsPanel() {
       waNotifyEnabled: fd.get('waNotifyEnabled') === 'on',
     };
     if (fd.get('waApiToken')) body.waApiToken = fd.get('waApiToken');
+    save.mutate(body);
+  }
+
+  function onSubmitTelegram(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const body: any = {
+      telegramChatId: fd.get('telegramChatId'),
+      telegramNotifyEnabled: fd.get('telegramNotifyEnabled') === 'on',
+    };
+    if (fd.get('telegramBotToken')) body.telegramBotToken = fd.get('telegramBotToken');
     save.mutate(body);
   }
 
@@ -683,6 +701,53 @@ function IntegrationsPanel() {
               onClick={() => testReminder.mutate()}>
               {testReminder.isPending ? <Loader2 className="animate-spin" size={15} /> : <MessageCircle size={15} />}
               Kirim Pengingat Sekarang
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Telegram (notifikasi admin — gratis) */}
+      <div className="card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-sm text-slate-700 flex items-center gap-2">
+            <MessageCircle size={16} className="text-sky-500" /> Telegram — Notifikasi Admin (gratis)
+          </h3>
+          <ConfiguredBadge ok={data!.telegram.hasBotToken && !!data!.telegram.chatId} />
+        </div>
+        <form onSubmit={onSubmitTelegram} className="space-y-3">
+          <div className="rounded-lg bg-sky-50 border border-sky-200 p-3 text-xs text-sky-800 space-y-1">
+            <p className="font-semibold">Cara setup (sekali saja):</p>
+            <p>1. Chat <strong>@BotFather</strong> di Telegram → <code className="bg-sky-100 px-1 rounded">/newbot</code> → salin token</p>
+            <p>2. Chat <strong>@userinfobot</strong> → salin Chat ID Anda (untuk grup: tambahkan bot ke grup, ID diawali <code className="bg-sky-100 px-1 rounded">-100</code>)</p>
+            <p>3. <strong>Wajib</strong>: kirim <code className="bg-sky-100 px-1 rounded">/start</code> ke bot Anda dulu agar bot boleh mengirim pesan</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Bot Token</label>
+              <input name="telegramBotToken" type="password" className="input font-mono"
+                placeholder={data?.telegram.hasBotToken ? '••••••• (kosongkan = tetap)' : '123456:AAE...'} />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Chat ID</label>
+              <input name="telegramChatId" className="input font-mono" defaultValue={data?.telegram.chatId} placeholder="mis. 123456789 atau -100..." />
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input type="checkbox" name="telegramNotifyEnabled" defaultChecked={data?.telegram.notifyEnabled} className="rounded" />
+            Aktifkan notifikasi admin via Telegram (ONU LOS/pulih, pembayaran masuk, voucher terjual)
+          </label>
+          <p className="text-xs text-slate-400">
+            Bila aktif, notifikasi admin dikirim ke Telegram (gratis) — menggantikan WA admin.
+            WA tetap dipakai untuk pesan ke pelanggan (tagihan, kuitansi, pengingat).
+          </p>
+          <div className="flex gap-2">
+            <button className="btn-primary" disabled={save.isPending}>
+              {save.isPending && <Loader2 className="animate-spin" size={15} />} Simpan Telegram
+            </button>
+            <button type="button" className="btn-ghost text-sm" disabled={testTelegram.isPending}
+              onClick={() => testTelegram.mutate()}>
+              {testTelegram.isPending ? <Loader2 className="animate-spin" size={15} /> : <PlugZap size={15} />}
+              Test Connection
             </button>
           </div>
         </form>

@@ -53,6 +53,18 @@ export class IntegrationSetting {
   @Column({ name: 'wa_notify_enabled', default: false })
   waNotifyEnabled: boolean;
 
+  // ── Telegram (notifikasi admin — gratis) ──
+  @Column({ name: 'telegram_bot_token_enc', type: 'bytea', nullable: true })
+  telegramBotTokenEnc: Buffer | null;
+
+  /** Chat ID tujuan: ID pribadi admin atau grup (-100...). */
+  @Column({ name: 'telegram_chat_id', nullable: true })
+  telegramChatId: string | null;
+
+  /** Kirim notifikasi kejadian ke Telegram (menggantikan WA admin bila aktif). */
+  @Column({ name: 'telegram_notify_enabled', default: false })
+  telegramNotifyEnabled: boolean;
+
   // ── GenieACS (TR-069) ──
   /** URL NBI GenieACS, mis. http://192.168.30.102:7557. */
   @Column({ name: 'genieacs_url', nullable: true })

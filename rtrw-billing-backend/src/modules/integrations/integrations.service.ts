@@ -29,6 +29,12 @@ export interface ResolvedGenieacsConfig {
   password: string;
 }
 
+export interface ResolvedTelegramConfig {
+  botToken: string;
+  chatId: string;
+  notifyEnabled: boolean;
+}
+
 /**
  * Konfigurasi integrasi (payment gateway + WA) dari DB, dengan fallback env.
  * Diedit lewat UI admin → PATCH /settings/integrations.
@@ -88,6 +94,16 @@ export class IntegrationsService {
     };
   }
 
+  /** Nilai efektif utk Telegram bot (notifikasi admin): DB dulu, env fallback. */
+  async resolveTelegram(): Promise<ResolvedTelegramConfig> {
+    const row = await this.getRow();
+    return {
+      botToken: this.crypto.decrypt(row.telegramBotTokenEnc) || process.env.TELEGRAM_BOT_TOKEN || '',
+      chatId: row.telegramChatId || process.env.TELEGRAM_CHAT_ID || '',
+      notifyEnabled: row.telegramNotifyEnabled,
+    };
+  }
+
   /** Utk UI admin — secret tidak dikembalikan, hanya flag terisi/tidak. */
   async getMasked() {
     const row = await this.getRow();
@@ -122,6 +138,11 @@ export class IntegrationsService {
         hasPassword: !!acs.password,
         fromEnv: !row.genieacsUrl && !!this.config.get('genieacs.url'),
       },
+      telegram: {
+        hasBotToken: !!(this.crypto.decrypt(row.telegramBotTokenEnc) || process.env.TELEGRAM_BOT_TOKEN),
+        chatId: row.telegramChatId ?? '',
+        notifyEnabled: row.telegramNotifyEnabled,
+      },
     };
   }
 
@@ -141,6 +162,9 @@ export class IntegrationsService {
     genieacsUrl?: string;
     genieacsUsername?: string;
     genieacsPassword?: string;
+    telegramBotToken?: string;
+    telegramChatId?: string;
+    telegramNotifyEnabled?: boolean;
   }) {
     const row = await this.getRow();
 
@@ -163,6 +187,9 @@ export class IntegrationsService {
     if (dto.waNotifyEnabled !== undefined) row.waNotifyEnabled = dto.waNotifyEnabled;
     if (dto.genieacsUrl !== undefined) row.genieacsUrl = dto.genieacsUrl || null;
     if (dto.genieacsUsername !== undefined) row.genieacsUsername = dto.genieacsUsername || null;
+    if (dto.telegramBotToken) row.telegramBotTokenEnc = this.crypto.encrypt(dto.telegramBotToken);
+    if (dto.telegramChatId !== undefined) row.telegramChatId = dto.telegramChatId || null;
+    if (dto.telegramNotifyEnabled !== undefined) row.telegramNotifyEnabled = dto.telegramNotifyEnabled;
 
     await this.repo.save(row);
     return this.getMasked();

@@ -34,13 +34,58 @@ export class WhatsappService {
   }
 
   /**
-   * Notifikasi kejadian ke nomor WA admin (ONU LOS, pembayaran masuk, dll).
-   * No-op bila toggle notifikasi mati atau nomor admin belum diisi.
+   * Notifikasi kejadian ke admin (ONU LOS, pembayaran masuk, dll).
+   * Prioritas: Telegram bot (gratis) bila aktif; fallback WA admin bila
+   * Telegram tidak dikonfigurasi. No-op bila keduanya mati.
    */
   async notifyAdmin(text: string): Promise<void> {
+    const tg = await this.integrations.resolveTelegram();
+    if (tg.notifyEnabled && tg.botToken && tg.chatId) {
+      await this.sendTelegram(tg.botToken, tg.chatId, text);
+      return;
+    }
     const { adminPhone, notifyEnabled } = await this.integrations.resolveWa();
     if (!notifyEnabled || !adminPhone) return;
     await this.sendRaw(adminPhone, text);
+  }
+
+  /** Kirim pesan via Telegram Bot API. */
+  private async sendTelegram(botToken: string, chatId: string, text: string): Promise<void> {
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text }),
+      });
+      const json: any = await res.json().catch(() => ({}));
+      if (!json.ok) this.logger.warn(`Telegram send gagal: ${json.description ?? res.status}`);
+    } catch (e) {
+      this.logger.warn(`Telegram send error: ${(e as Error).message}`);
+    }
+  }
+
+  /** Tes koneksi Telegram — kirim pesan tes, lempar error bila gagal. */
+  async testTelegram(): Promise<{ ok: boolean; error?: string }> {
+    const tg = await this.integrations.resolveTelegram();
+    if (!tg.botToken || !tg.chatId) {
+      return { ok: false, error: 'Bot token / Chat ID belum diisi.' };
+    }
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${tg.botToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: tg.chatId,
+          text: '✅ Tes koneksi berhasil — notifikasi admin RT/RW Billing via Telegram aktif.',
+        }),
+      });
+      const json: any = await res.json().catch(() => ({}));
+      return json.ok
+        ? { ok: true }
+        : { ok: false, error: json.description ?? `HTTP ${res.status}` };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
   }
 
   async sendRaw(phone: string, text: string): Promise<void> {
