@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 import { Device, DeviceMetric, Olt } from '@database/entities';
 import { SnmpService, OltTarget } from '@modules/snmp/snmp.service';
 import { MonitoringGateway } from '@modules/monitoring/monitoring.gateway';
+import { WhatsappService } from '@modules/whatsapp/whatsapp.module';
 import { MONITOR_QUEUE, MonitorJobData } from './queue.constants';
 
 /**
@@ -22,12 +23,16 @@ export class MonitorProcessor extends WorkerHost {
     @InjectRepository(DeviceMetric) private readonly metrics: Repository<DeviceMetric>,
     @InjectRepository(Olt) private readonly olts: Repository<Olt>,
     private readonly gateway: MonitoringGateway,
+    private readonly wa: WhatsappService,
   ) {
     super();
   }
 
   async process(job: Job<MonitorJobData>): Promise<void> {
-    const device = await this.devices.findOne({ where: { id: job.data.deviceId } });
+    const device = await this.devices.findOne({
+      where: { id: job.data.deviceId },
+      relations: { subscription: { customer: true } },
+    });
     if (!device || !device.oltHost) return;
 
     const oltRow = await this.olts.findOne({ where: { host: device.oltHost } });
@@ -55,11 +60,14 @@ export class MonitorProcessor extends WorkerHost {
       }
 
       const rx = reading.dBm == null ? null : reading.dBm.toFixed(2);
+      // LOS asli hanya bila OLT benar-benar melaporkan tak ada sinyal.
+      const newStatus = reading.dBm == null ? 'los' : reading.health === 'critical' ? 'los' : 'online';
+      const prevStatus = device.lastStatus;
+
       await this.metrics.save(this.metrics.create({ deviceId: device.id, rxPower: rx }));
       await this.devices.update(device.id, {
         lastRxPower: rx,
-        // LOS asli hanya bila OLT benar-benar melaporkan tak ada sinyal.
-        lastStatus: reading.dBm == null ? 'los' : reading.health === 'critical' ? 'los' : 'online',
+        lastStatus: newStatus,
         updatedAt: new Date(),
       });
       this.gateway.emitOnuStatus({
@@ -67,6 +75,20 @@ export class MonitorProcessor extends WorkerHost {
         dBm: reading.dBm,
         health: reading.health,
       });
+
+      // Notifikasi WA admin hanya saat status BERUBAH (bukan tiap poll).
+      if (prevStatus !== newStatus) {
+        const who = device.subscription?.customer?.fullName
+          ? `${device.serialNumber} (${device.subscription.customer.fullName})`
+          : device.serialNumber;
+        if (newStatus === 'los') {
+          await this.wa.notifyAdmin(
+            `🔴 ONU LOS: ${who}${rx ? ` — RX ${rx} dBm` : ' — tidak ada sinyal'}. Cek kabel/perangkat pelanggan.`,
+          );
+        } else if (prevStatus === 'los' || prevStatus === 'offline') {
+          await this.wa.notifyAdmin(`🟢 ONU pulih: ${who} — RX ${rx} dBm.`);
+        }
+      }
     } catch (err) {
       // Gagal total (mis. OLT unreachable) → jangan flip ke LOS/offline; biarkan
       // status terakhir. Cuma catat warning. Alarm sesungguhnya butuh pembacaan sukses.

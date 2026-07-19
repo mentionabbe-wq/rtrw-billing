@@ -19,6 +19,8 @@ export interface ResolvedWaConfig {
   apiToken: string;
   reminderEnabled: boolean;
   reminderDays: number;
+  adminPhone: string;
+  notifyEnabled: boolean;
 }
 
 export interface ResolvedGenieacsConfig {
@@ -70,6 +72,8 @@ export class IntegrationsService {
       apiToken: this.crypto.decrypt(row.waApiTokenEnc) || process.env.WA_API_TOKEN || '',
       reminderEnabled: row.waReminderEnabled,
       reminderDays: row.waReminderDays,
+      adminPhone: row.waAdminPhone ?? '',
+      notifyEnabled: row.waNotifyEnabled,
     };
   }
 
@@ -109,6 +113,8 @@ export class IntegrationsService {
         fromEnv: !row.waApiUrl && !!process.env.WA_API_URL,
         reminderEnabled: row.waReminderEnabled,
         reminderDays: row.waReminderDays,
+        adminPhone: row.waAdminPhone ?? '',
+        notifyEnabled: row.waNotifyEnabled,
       },
       genieacs: {
         url: row.genieacsUrl ?? '',
@@ -130,6 +136,8 @@ export class IntegrationsService {
     waApiToken?: string;
     waReminderEnabled?: boolean;
     waReminderDays?: number;
+    waAdminPhone?: string;
+    waNotifyEnabled?: boolean;
     genieacsUrl?: string;
     genieacsUsername?: string;
     genieacsPassword?: string;
@@ -151,6 +159,8 @@ export class IntegrationsService {
     if (dto.waReminderDays !== undefined && dto.waReminderDays >= 0) {
       row.waReminderDays = dto.waReminderDays;
     }
+    if (dto.waAdminPhone !== undefined) row.waAdminPhone = dto.waAdminPhone || null;
+    if (dto.waNotifyEnabled !== undefined) row.waNotifyEnabled = dto.waNotifyEnabled;
     if (dto.genieacsUrl !== undefined) row.genieacsUrl = dto.genieacsUrl || null;
     if (dto.genieacsUsername !== undefined) row.genieacsUsername = dto.genieacsUsername || null;
 

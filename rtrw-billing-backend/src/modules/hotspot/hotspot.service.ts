@@ -410,6 +410,10 @@ export class HotspotService {
       }
     }
 
+    await this.wa.notifyAdmin(
+      `🎫 Voucher terjual: ${code} — paket ${voucher.package?.name ?? '-'}` +
+      `${voucher.buyerName ? `, pembeli ${voucher.buyerName}` : ''}, Rp ${Number(amount).toLocaleString('id-ID')}.`,
+    );
     this.logger.log(`Voucher ${code} activated via ${method}`);
   }
 

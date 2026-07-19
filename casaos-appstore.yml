@@ -39,6 +39,9 @@ services:
       GENIEACS_PASSWORD: ""
     ports:
       - "3000:3000"
+    volumes:
+      # Backup DB harian (pg_dump) — mount ke host agar selamat saat recreate.
+      - /DATA/AppData/rtrw-billing/backups:/app/backups
     depends_on:
       - postgres
       - redis

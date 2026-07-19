@@ -1,6 +1,6 @@
 import { FormEvent, ReactNode, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Loader2, X, Trash2, Pencil, PlugZap, Server, Network, Globe, ExternalLink, CreditCard, MessageCircle, CheckCircle2, XCircle } from 'lucide-react';
+import { Plus, Loader2, X, Trash2, Pencil, PlugZap, Server, Network, Globe, ExternalLink, CreditCard, MessageCircle, CheckCircle2, XCircle, Database, Download } from 'lucide-react';
 import { api } from '@/lib/api';
 
 interface Router {
@@ -19,7 +19,7 @@ const statusTone: Record<string, string> = {
 };
 
 export default function Settings() {
-  const [tab, setTab] = useState<'routers' | 'olts' | 'portal' | 'integrations'>('routers');
+  const [tab, setTab] = useState<'routers' | 'olts' | 'portal' | 'integrations' | 'backup'>('routers');
 
   return (
     <div className="space-y-5">
@@ -49,11 +49,18 @@ export default function Settings() {
         >
           <CreditCard size={15} className="mr-1 inline" /> Integrasi
         </button>
+        <button
+          className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === 'backup' ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500'}`}
+          onClick={() => setTab('backup')}
+        >
+          <Database size={15} className="mr-1 inline" /> Backup
+        </button>
       </div>
       {tab === 'routers' && <RoutersPanel />}
       {tab === 'olts' && <OltsPanel />}
       {tab === 'portal' && <PortalPanel />}
       {tab === 'integrations' && <IntegrationsPanel />}
+      {tab === 'backup' && <BackupPanel />}
     </div>
   );
 }
@@ -461,7 +468,10 @@ add chain=dstnat src-address-list=isolir protocol=tcp dst-port=443 \\
 interface IntegrationSettings {
   tripay: { hasApiKey: boolean; hasPrivateKey: boolean; merchantCode: string; mode: string; fromEnv: boolean };
   midtrans: { hasServerKey: boolean; mode: string; fromEnv: boolean };
-  whatsapp: { apiUrl: string; hasToken: boolean; fromEnv: boolean; reminderEnabled: boolean; reminderDays: number };
+  whatsapp: {
+    apiUrl: string; hasToken: boolean; fromEnv: boolean; reminderEnabled: boolean; reminderDays: number;
+    adminPhone: string; notifyEnabled: boolean;
+  };
   genieacs: { url: string; username: string; hasPassword: boolean; fromEnv: boolean };
 }
 
@@ -534,6 +544,8 @@ function IntegrationsPanel() {
       waApiUrl: fd.get('waApiUrl'),
       waReminderEnabled: fd.get('waReminderEnabled') === 'on',
       waReminderDays: Number(fd.get('waReminderDays')) || 3,
+      waAdminPhone: fd.get('waAdminPhone'),
+      waNotifyEnabled: fd.get('waNotifyEnabled') === 'on',
     };
     if (fd.get('waApiToken')) body.waApiToken = fd.get('waApiToken');
     save.mutate(body);
@@ -653,6 +665,16 @@ function IntegrationsPanel() {
               hari sebelum jatuh tempo
             </div>
           </div>
+          <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-3">
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <input type="checkbox" name="waNotifyEnabled" defaultChecked={data?.whatsapp.notifyEnabled} className="rounded" />
+              Notifikasi kejadian ke admin (ONU LOS/pulih, pembayaran masuk, voucher terjual)
+            </label>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">No. WA Admin (tanpa +)</label>
+              <input name="waAdminPhone" className="input" defaultValue={data?.whatsapp.adminPhone ?? ''} placeholder="6281234567890" />
+            </div>
+          </div>
           <div className="flex gap-2">
             <button className="btn-primary" disabled={save.isPending}>
               {save.isPending && <Loader2 className="animate-spin" size={15} />} Simpan WhatsApp
@@ -701,6 +723,92 @@ function IntegrationsPanel() {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+/* --------------------------- Backup Panel --------------------------- */
+interface BackupFile { name: string; sizeBytes: number; createdAt: string }
+
+const fmtSize = (b: number) =>
+  b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${(b / 1024).toFixed(0)} KB`;
+
+function BackupPanel() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery<BackupFile[]>({
+    queryKey: ['backups'],
+    queryFn: async () => (await api.get('/settings/backups')).data,
+  });
+
+  const run = useMutation({
+    mutationFn: () => api.post('/settings/backups/run'),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['backups'] });
+      alert(`Backup berhasil: ${res.data.name} (${fmtSize(res.data.sizeBytes)})`);
+    },
+    onError: (e: any) => alert(`${e?.response?.data?.message ?? e.message}`),
+  });
+
+  async function download(name: string) {
+    const res = await api.get(`/settings/backups/${encodeURIComponent(name)}/download`, { responseType: 'blob' });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="card p-5">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-semibold text-sm text-slate-700 flex items-center gap-2">
+            <Database size={16} className="text-indigo-500" /> Backup Database
+          </h3>
+          <button className="btn-primary text-sm" disabled={run.isPending} onClick={() => run.mutate()}>
+            {run.isPending ? <Loader2 size={15} className="animate-spin" /> : <Database size={15} />}
+            Backup Sekarang
+          </button>
+        </div>
+        <p className="text-xs text-slate-400 mb-4">
+          Backup otomatis setiap hari jam 02:00 (disimpan {`±`}2 minggu terakhir).
+          Unduh berkala dan simpan di tempat lain (laptop/Nextcloud) untuk keamanan ganda.
+          Restore: <code className="bg-slate-100 px-1 rounded">pg_restore -d rtrw_billing file.dump</code>
+        </p>
+
+        {isLoading && <p className="text-sm text-slate-400 py-4 text-center">Memuat…</p>}
+        {data && (
+          <div className="rounded-lg border border-slate-100 divide-y divide-slate-100">
+            {data.map((f) => (
+              <div key={f.name} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                <div>
+                  <span className="font-mono text-xs">{f.name}</span>
+                  <span className="text-xs text-slate-400 ml-3">
+                    {new Date(f.createdAt).toLocaleString('id-ID')} · {fmtSize(f.sizeBytes)}
+                  </span>
+                </div>
+                <button className="btn-ghost text-brand-600 text-xs" onClick={() => download(f.name)} title="Unduh">
+                  <Download size={14} /> Unduh
+                </button>
+              </div>
+            ))}
+            {!data.length && (
+              <p className="px-4 py-6 text-center text-sm text-slate-400">
+                Belum ada backup. Klik "Backup Sekarang" — atau tunggu jadwal 02:00.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="card p-4 border-amber-200 bg-amber-50 text-xs text-amber-800">
+        <p className="font-semibold mb-1">Penting: mount folder backup ke host</p>
+        <p>
+          Agar backup tidak hilang saat container di-recreate, tambahkan volume di compose CasaOS
+          (service app): <code className="bg-amber-100 px-1 rounded">- /DATA/AppData/rtrw-billing/backups:/app/backups</code>
+        </p>
       </div>
     </div>
   );

@@ -249,6 +249,10 @@ export class BillingService {
     if (phone) {
       await this.wa.send(phone, 'aktif_kembali', { name: invoice.subscription.customer.fullName });
     }
+    await this.wa.notifyAdmin(
+      `💰 Pembayaran diterima: ${invoice.subscription.customer?.fullName ?? invoice.invoiceNo} — ` +
+      `${rupiah(params.amount)} via ${params.gateway}${params.method ? ` (${params.method})` : ''}.`,
+    );
     this.logger.log(`Invoice ${invoice.invoiceNo} settled, sub ${sub.id} reactivated`);
   }
 }

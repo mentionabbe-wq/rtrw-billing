@@ -45,6 +45,14 @@ export class IntegrationSetting {
   @Column({ name: 'wa_reminder_days', type: 'int', default: 3 })
   waReminderDays: number;
 
+  /** Nomor WA admin utk notifikasi kejadian (ONU LOS, pembayaran masuk). */
+  @Column({ name: 'wa_admin_phone', nullable: true })
+  waAdminPhone: string | null;
+
+  /** Kirim notifikasi kejadian ke admin. */
+  @Column({ name: 'wa_notify_enabled', default: false })
+  waNotifyEnabled: boolean;
+
   // ── GenieACS (TR-069) ──
   /** URL NBI GenieACS, mis. http://192.168.30.102:7557. */
   @Column({ name: 'genieacs_url', nullable: true })

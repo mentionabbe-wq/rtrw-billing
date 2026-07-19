@@ -23,6 +23,9 @@ RUN npm run build
 FROM node:20-slim
 WORKDIR /app
 ENV NODE_ENV=production
+# postgresql-client menyediakan pg_dump utk fitur backup otomatis DB.
+RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client \
+  && rm -rf /var/lib/apt/lists/*
 COPY rtrw-billing-backend/package*.json ./
 RUN npm install --omit=dev
 COPY --from=be /app/dist ./dist

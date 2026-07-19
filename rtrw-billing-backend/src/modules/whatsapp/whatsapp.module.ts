@@ -33,6 +33,16 @@ export class WhatsappService {
     return this.sendRaw(phone, TEMPLATES[template](vars));
   }
 
+  /**
+   * Notifikasi kejadian ke nomor WA admin (ONU LOS, pembayaran masuk, dll).
+   * No-op bila toggle notifikasi mati atau nomor admin belum diisi.
+   */
+  async notifyAdmin(text: string): Promise<void> {
+    const { adminPhone, notifyEnabled } = await this.integrations.resolveWa();
+    if (!notifyEnabled || !adminPhone) return;
+    await this.sendRaw(adminPhone, text);
+  }
+
   async sendRaw(phone: string, text: string): Promise<void> {
     const { apiUrl: url, apiToken: token } = await this.integrations.resolveWa();
 

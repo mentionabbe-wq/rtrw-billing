@@ -30,6 +30,13 @@ export class HotspotController {
     return this.svc.listRouters();
   }
 
+  /** Gateway pembayaran yang terkonfigurasi — hanya yang aktif tampil di form beli. */
+  @Get('gateways')
+  async gateways() {
+    const s = await this.gateway.getStatus();
+    return { tripay: s.tripay.configured, midtrans: s.midtrans.configured };
+  }
+
   /** Cek status voucher by kode — ditampilkan setelah pembayaran. */
   @Get('voucher/:code')
   getVoucher(@Param('code') code: string) {

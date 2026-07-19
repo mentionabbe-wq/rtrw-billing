@@ -70,6 +70,17 @@ export default function VoucherStore() {
     queryFn: async () => (await api.get('/hotspot/routers')).data,
   });
 
+  // Hanya gateway yang terkonfigurasi yang ditawarkan ke pembeli.
+  const { data: gateways } = useQuery<{ tripay: boolean; midtrans: boolean }>({
+    queryKey: ['hotspot-gateways'],
+    queryFn: async () => (await api.get('/hotspot/gateways')).data,
+    staleTime: 5 * 60 * 1000,
+  });
+  const gatewayOptions = [
+    ...(gateways?.tripay !== false ? [{ value: 'tripay', label: 'Tripay (QRIS / VA / Alfamart)' }] : []),
+    ...(gateways?.midtrans !== false ? [{ value: 'midtrans', label: 'Midtrans (QRIS / Kartu / VA)' }] : []),
+  ];
+
   const { data: voucherResult, refetch: refetchVoucher } = useQuery<VoucherResult | null>({
     queryKey: ['voucher-status', codeFromUrl],
     queryFn: async () => {
@@ -82,6 +93,14 @@ export default function VoucherStore() {
   });
 
   const defaultRouter = routers?.[0];
+
+  // Pastikan gateway terpilih selalu salah satu yang terkonfigurasi.
+  useEffect(() => {
+    if (gatewayOptions.length && !gatewayOptions.some((g) => g.value === form.gateway)) {
+      setForm((f) => ({ ...f, gateway: gatewayOptions[0].value }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gateways]);
 
   const purchase = useMutation({
     mutationFn: (body: any) => api.post('/hotspot/purchase', body),
@@ -266,13 +285,14 @@ export default function VoucherStore() {
                   value={form.buyerPhone} onChange={(e) => setForm({ ...form, buyerPhone: e.target.value })} />
                 <p className="text-xs text-slate-400 mt-1">Kode voucher akan dikirim ke nomor ini setelah pembayaran.</p>
               </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600">Metode Bayar</label>
-                <select className="input mt-1" value={form.gateway} onChange={(e) => setForm({ ...form, gateway: e.target.value })}>
-                  <option value="tripay">Tripay (QRIS / VA / Alfamart)</option>
-                  <option value="midtrans">Midtrans (QRIS / Kartu / VA)</option>
-                </select>
-              </div>
+              {gatewayOptions.length > 1 && (
+                <div>
+                  <label className="text-xs font-medium text-slate-600">Metode Bayar</label>
+                  <select className="input mt-1" value={form.gateway} onChange={(e) => setForm({ ...form, gateway: e.target.value })}>
+                    {gatewayOptions.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2 pt-2">

@@ -28,6 +28,7 @@ import { PortalModule } from '@modules/portal/portal.module';
 import { HotspotModule } from '@modules/hotspot/hotspot.module';
 import { PaymentWebhookModule } from '@modules/billing/payment-webhook.module';
 import { IntegrationsModule } from '@modules/integrations/integrations.module';
+import { BackupModule } from '@modules/backup/backup.module';
 
 @Module({
   imports: [
@@ -84,6 +85,7 @@ import { IntegrationsModule } from '@modules/integrations/integrations.module';
     PortalModule,
     HotspotModule,
     PaymentWebhookModule,
+    BackupModule,
   ],
 })
 export class AppModule {}
