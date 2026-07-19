@@ -30,4 +30,6 @@ export class CreateCustomerDto {
   @IsOptional() @IsString() pppoePass?: string;
   @IsOptional() @IsString() packageId?: string;
   @IsOptional() @IsString() routerId?: string;
+  /** IP statis pelanggan (remote-address PPP secret). Opsional. */
+  @IsOptional() @IsString() ipStatic?: string;
 }

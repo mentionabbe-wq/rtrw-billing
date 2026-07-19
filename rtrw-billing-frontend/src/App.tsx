@@ -6,7 +6,6 @@ import { Capability, useCan } from '@/lib/rbac';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Customers from '@/pages/Customers';
-import Subscriptions from '@/pages/Subscriptions';
 import PppoeActive from '@/pages/PppoeActive';
 import Packages from '@/pages/Packages';
 import Invoices from '@/pages/Invoices';
@@ -40,7 +39,8 @@ export default function App() {
       >
         <Route path="/" element={<Dashboard />} />
         <Route path="/customers" element={<Customers />} />
-        <Route path="/subscriptions" element={<Subscriptions />} />
+        {/* Langganan digabung ke /customers — redirect utk link lama */}
+        <Route path="/subscriptions" element={<Navigate to="/customers" replace />} />
         <Route path="/pppoe" element={<PppoeActive />} />
         <Route path="/packages" element={<Packages />} />
         <Route path="/invoices" element={<Invoices />} />

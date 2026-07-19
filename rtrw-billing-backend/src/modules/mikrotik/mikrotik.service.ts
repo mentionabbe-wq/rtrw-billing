@@ -296,6 +296,7 @@ export class MikrotikService {
           '=disabled=no',
           ...(profile ? [`=profile=${profile}`] : []),
           ...(password ? [`=password=${password}`] : []),
+          ...(sub.ipStatic ? [`=remote-address=${sub.ipStatic}`] : []),
         ]);
       } else {
         // Secret belum ada → buat baru
@@ -304,7 +305,8 @@ export class MikrotikService {
           `=password=${password ?? sub.pppoeUser}`,
           `=service=pppoe`,
           ...(profile ? [`=profile=${profile}`] : []),
-          `=comment=auto-provisioned`,
+          ...(sub.ipStatic ? [`=remote-address=${sub.ipStatic}`] : []),
+          `=comment=created-via-billing`,
         ]);
       }
     } finally {

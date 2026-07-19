@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  LayoutDashboard, Users, Package, Receipt, Activity, LogOut, Menu, X, Wifi, Network,
+  LayoutDashboard, Users, Package, Receipt, Activity, LogOut, Menu, X, Wifi,
   Settings as SettingsIcon, ScrollText, UserCog, ShieldCheck, Ticket, Wallet,
 } from 'lucide-react';
 import clsx from 'clsx';
@@ -19,7 +19,6 @@ interface PortalSettings {
 const nav: { to: string; label: string; icon: any; end?: boolean; cap?: Capability }[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/customers', label: 'Pelanggan', icon: Users },
-  { to: '/subscriptions', label: 'Langganan', icon: Network },
   { to: '/pppoe', label: 'PPPoE Aktif', icon: Wifi },
   { to: '/packages', label: 'Paket', icon: Package },
   { to: '/invoices', label: 'Tagihan', icon: Receipt },

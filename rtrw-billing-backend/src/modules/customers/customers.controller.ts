@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@modules/auth/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
@@ -17,6 +17,12 @@ export class CustomersController {
   @Get()
   findAll() {
     return this.service.findAll();
+  }
+
+  /** Cek ketersediaan user PPPoE. Definisikan SEBELUM :id. */
+  @Get('check-pppoe')
+  checkPppoe(@Query('username') username: string, @Query('routerId') routerId?: string) {
+    return this.service.checkPppoe(username, routerId || undefined);
   }
 
   @Get(':id')

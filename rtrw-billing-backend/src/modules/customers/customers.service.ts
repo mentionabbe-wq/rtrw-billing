@@ -131,6 +131,7 @@ export class CustomersService {
         connType: 'pppoe',
         pppoeUser: dto.pppoeUser.trim(),
         pppoePassEnc: dto.pppoePass ? this.crypto.encrypt(dto.pppoePass) : null,
+        ipStatic: dto.ipStatic?.trim() || null,
         status: 'active',
         dueDate: due.toISOString().slice(0, 10),
       }));
@@ -158,9 +159,64 @@ export class CustomersService {
     return this.toView(c);
   }
 
+  /**
+   * Cek ketersediaan user PPPoE: unik di billing, dan (bila router dipilih)
+   * belum ada sebagai PPP secret di Mikrotik.
+   */
+  async checkPppoe(username: string, routerId?: string) {
+    const u = (username ?? '').trim();
+    if (!u) return { available: false, reason: 'Username kosong.' };
+
+    const dup = await this.subs
+      .createQueryBuilder('s')
+      .where('LOWER(s.pppoeUser) = LOWER(:u)', { u })
+      .getOne();
+    if (dup) return { available: false, reason: 'Sudah dipakai pelanggan lain di billing.' };
+
+    if (routerId) {
+      const router = await this.routers.findOne({ where: { id: routerId } });
+      if (router) {
+        try {
+          const secrets = await this.mikrotik.listSecrets(router);
+          if (secrets.some((s: any) => String(s.name).toLowerCase() === u.toLowerCase())) {
+            return { available: false, reason: `Sudah ada sebagai secret di Mikrotik (${router.name}).` };
+          }
+        } catch {
+          return { available: true, warning: `Router ${router.name} tak terjangkau — hanya dicek di billing.` };
+        }
+      }
+    }
+    return { available: true };
+  }
+
   async findAll() {
     const rows = await this.repo.find({ order: { id: 'DESC' }, take: 200 });
-    return rows.map((c) => this.toView(c));
+
+    // Sertakan ringkasan langganan (menu Pelanggan & Langganan digabung).
+    const subs = await this.subs.find({
+      relations: { customer: true, package: true },
+      take: 500,
+    });
+    const byCustomer = new Map<string, Subscription>();
+    for (const s of subs) {
+      if (s.customer?.id && !byCustomer.has(String(s.customer.id))) {
+        byCustomer.set(String(s.customer.id), s);
+      }
+    }
+
+    return rows.map((c) => {
+      const s = byCustomer.get(String(c.id));
+      return {
+        ...this.toView(c),
+        subscriptionId: s ? String(s.id) : null,
+        pppoeUser: s?.pppoeUser ?? null,
+        packageId: s?.package ? String(s.package.id) : null,
+        packageName: s?.package?.name ?? null,
+        rateLimit: s?.package?.rateLimit ?? null,
+        subStatus: s?.status ?? null,
+        dueDate: s?.dueDate ?? null,
+      };
+    });
   }
 
   /**
