@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Invoice, Payment, Subscription } from '@database/entities';
+import { Invoice, Payment, PortalSetting, Subscription } from '@database/entities';
 import { MIKROTIK_QUEUE } from '@modules/scheduler/queue.constants';
 import { BillingService } from './billing.service';
 import { BillingController } from './billing.controller';
@@ -11,7 +11,7 @@ import { PaymentGatewayService } from './payment-gateway.service';
 // dengan HotspotModule yang juga butuh BillingModule).
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Invoice, Payment, Subscription]),
+    TypeOrmModule.forFeature([Invoice, Payment, Subscription, PortalSetting]),
     BullModule.registerQueue({ name: MIKROTIK_QUEUE }),
   ],
   controllers: [BillingController],

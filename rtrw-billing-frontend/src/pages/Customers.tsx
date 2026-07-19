@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Loader2, X, Pencil, Trash2, RefreshCw } from 'lucide-react';
+import { Plus, Loader2, X, Pencil, Trash2, RefreshCw, Receipt, Send } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCan } from '@/lib/rbac';
 
@@ -30,6 +30,7 @@ export default function Customers() {
   const canAdmin = useCan('settings.manage'); // hapus & clear-demo = admin
   const [mode, setMode] = useState<'closed' | 'create' | 'edit'>('closed');
   const [editing, setEditing] = useState<CustomerDetail | null>(null);
+  const [historyFor, setHistoryFor] = useState<Customer | null>(null);
 
   const { data, isLoading } = useQuery<Customer[]>({
     queryKey: ['customers'],
@@ -161,6 +162,9 @@ export default function Customers() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1">
+                      <button className="btn-ghost text-brand-600" onClick={() => setHistoryFor(c)} title="Riwayat pembayaran">
+                        <Receipt size={16} />
+                      </button>
                       {canWrite && (
                         <button className="btn-ghost" onClick={() => openEdit(c.id)} title="Edit">
                           <Pencil size={16} />
@@ -243,6 +247,106 @@ export default function Customers() {
           </div>
         </div>
       )}
+
+      {historyFor && <PaymentHistoryModal customer={historyFor} onClose={() => setHistoryFor(null)} />}
+    </div>
+  );
+}
+
+/* -------------------- Riwayat pembayaran + kuitansi WA -------------------- */
+interface PaymentRow {
+  id: string;
+  invoiceNo: string | null;
+  amount: string;
+  method: string | null;
+  gateway: string | null;
+  status: string;
+  paidAt: string | null;
+  periodStart: string | null;
+  packageName: string | null;
+}
+
+const rupiah = (v: string) =>
+  new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(v));
+
+function PaymentHistoryModal({ customer, onClose }: { customer: Customer; onClose: () => void }) {
+  const { data, isLoading } = useQuery<PaymentRow[]>({
+    queryKey: ['customer-payments', customer.id],
+    queryFn: async () => (await api.get(`/billing/customers/${customer.id}/payments`)).data,
+  });
+
+  const receipt = useMutation({
+    mutationFn: (paymentId: string) => api.post(`/billing/payments/${paymentId}/receipt`),
+    onSuccess: (res: any) =>
+      alert(res.data?.sent ? 'Kuitansi dikirim ke WA pelanggan ✓' : `Tidak terkirim: ${res.data?.reason ?? '-'}`),
+    onError: (e: any) => alert(`Gagal: ${e?.response?.data?.message ?? e.message}`),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
+      <div className="card w-full max-w-2xl p-6 max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-semibold flex items-center gap-2">
+            <Receipt size={18} className="text-brand-600" /> Riwayat Pembayaran — {customer.fullName}
+          </h2>
+          <button className="btn-ghost" onClick={onClose}><X size={18} /></button>
+        </div>
+
+        {isLoading && <p className="py-8 text-center text-slate-400">Memuat…</p>}
+
+        {data && (
+          <div className="overflow-auto flex-1 rounded-lg border border-slate-100">
+            <table className="min-w-full text-sm">
+              <thead className="sticky top-0 bg-slate-50 text-left text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Tanggal</th>
+                  <th className="px-3 py-2 font-medium">Periode</th>
+                  <th className="px-3 py-2 font-medium">Paket</th>
+                  <th className="px-3 py-2 font-medium text-right">Jumlah</th>
+                  <th className="px-3 py-2 font-medium">Metode</th>
+                  <th className="px-3 py-2 font-medium text-right">Kuitansi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {data.map((p) => (
+                  <tr key={p.id} className="hover:bg-slate-50">
+                    <td className="px-3 py-2 text-xs">
+                      {p.paidAt ? new Date(p.paidAt).toLocaleDateString('id-ID') : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-xs">{p.periodStart ? String(p.periodStart).slice(0, 7) : '—'}</td>
+                    <td className="px-3 py-2 text-xs">{p.packageName ?? '—'}</td>
+                    <td className="px-3 py-2 text-right font-medium">{rupiah(p.amount)}</td>
+                    <td className="px-3 py-2 text-xs text-slate-500">{p.method ?? p.gateway ?? '—'}</td>
+                    <td className="px-3 py-2 text-right">
+                      {p.status === 'settled' ? (
+                        <button className="btn-ghost py-1 text-xs text-brand-600"
+                          disabled={receipt.isPending}
+                          onClick={() => receipt.mutate(p.id)}
+                          title="Kirim kuitansi ke WA pelanggan">
+                          <Send size={13} /> Kirim
+                        </button>
+                      ) : (
+                        <span className="badge bg-amber-50 text-amber-700">{p.status}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {!data.length && (
+                  <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">
+                    Belum ada pembayaran tercatat untuk pelanggan ini.
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {data && data.length > 0 && (
+          <p className="mt-3 text-xs text-slate-400">
+            {data.length} pembayaran · Total {rupiah(String(data.filter((p) => p.status === 'settled').reduce((s, p) => s + Number(p.amount), 0)))}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

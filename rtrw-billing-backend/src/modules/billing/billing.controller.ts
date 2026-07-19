@@ -61,6 +61,19 @@ export class BillingController {
     return this.billing.createPaymentLink(id, gatewayName, this.gateway);
   }
 
+  /** Riwayat pembayaran satu pelanggan. */
+  @Get('customers/:customerId/payments')
+  customerPayments(@Param('customerId') customerId: string) {
+    return this.billing.customerPayments(customerId);
+  }
+
+  /** Kirim ulang kuitansi pembayaran ke WA pelanggan. */
+  @Post('payments/:id/receipt')
+  @Roles('admin', 'finance', 'operator')
+  sendReceipt(@Param('id') id: string) {
+    return this.billing.sendReceipt(id);
+  }
+
   /** Cek apakah payment gateway sudah dikonfigurasi. */
   @Get('gateway/status')
   @Roles('admin', 'finance')

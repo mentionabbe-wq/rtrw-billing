@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Between, Repository } from 'typeorm';
-import { Invoice, Payment, Subscription } from '@database/entities';
+import { Invoice, Payment, PortalSetting, Subscription } from '@database/entities';
 import { CryptoService } from '@common/crypto/crypto.service';
 import { WhatsappService } from '@modules/whatsapp/whatsapp.module';
 import {
@@ -23,6 +23,7 @@ export class BillingService {
     @InjectRepository(Invoice) private readonly invoices: Repository<Invoice>,
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     @InjectRepository(Subscription) private readonly subs: Repository<Subscription>,
+    @InjectRepository(PortalSetting) private readonly portal: Repository<PortalSetting>,
     @InjectQueue(MIKROTIK_QUEUE) private readonly mikrotikQueue: Queue<MikrotikJobData>,
     private readonly crypto: CryptoService,
     private readonly wa: WhatsappService,
@@ -197,6 +198,64 @@ export class BillingService {
    * Mark invoice paid + extend due date + enqueue Mikrotik reactivation.
    * Idempotent: if already paid, it just no-ops.
    */
+  /** Riwayat pembayaran satu pelanggan (semua langganannya), terbaru dulu. */
+  async customerPayments(customerId: string) {
+    const rows = await this.payments.find({
+      where: { invoice: { subscription: { customer: { id: customerId } } } },
+      relations: { invoice: { subscription: { customer: true, package: true } } },
+      order: { id: 'DESC' },
+      take: 100,
+    });
+    return rows.map((p) => ({
+      id: p.id,
+      invoiceNo: p.invoice?.invoiceNo ?? null,
+      amount: p.amount,
+      method: p.method,
+      gateway: p.gateway,
+      status: p.status,
+      paidAt: p.paidAt,
+      periodStart: p.invoice?.periodStart ?? null,
+      periodEnd: p.invoice?.periodEnd ?? null,
+      packageName: p.invoice?.subscription?.package?.name ?? null,
+      customerName: p.invoice?.subscription?.customer?.fullName ?? null,
+    }));
+  }
+
+  /** Kirim kuitansi pembayaran ke WA pelanggan. */
+  async sendReceipt(paymentId: string): Promise<{ sent: boolean; reason?: string }> {
+    const p = await this.payments.findOne({
+      where: { id: paymentId },
+      relations: { invoice: { subscription: { customer: true, package: true } } },
+    });
+    if (!p) throw new NotFoundException('Pembayaran tidak ditemukan');
+    if (p.status !== 'settled') return { sent: false, reason: 'Pembayaran belum lunas/settled.' };
+
+    const customer = p.invoice?.subscription?.customer;
+    const phone = customer ? this.crypto.decrypt(customer.phoneEnc) : null;
+    if (!phone) return { sent: false, reason: 'Nomor WA pelanggan tidak terisi.' };
+
+    const setting = await this.portal.findOne({ where: { id: 1 } });
+    const company = setting?.companyName ?? 'RT/RW Net';
+    const periode = p.invoice?.periodStart ? String(p.invoice.periodStart).slice(0, 7) : '-';
+    const tgl = p.paidAt
+      ? new Date(p.paidAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+      : '-';
+
+    await this.wa.sendRaw(
+      phone,
+      `🧾 *KUITANSI PEMBAYARAN — ${company}*\n\n` +
+      `Nama: ${customer.fullName}\n` +
+      `No. Invoice: ${p.invoice?.invoiceNo ?? '-'}\n` +
+      `Paket: ${p.invoice?.subscription?.package?.name ?? '-'}\n` +
+      `Periode: ${periode}\n` +
+      `Jumlah: ${rupiah(p.amount)}\n` +
+      `Metode: ${p.method ?? p.gateway ?? '-'}\n` +
+      `Tanggal bayar: ${tgl}\n\n` +
+      `Pembayaran Anda sudah kami terima — terima kasih! 🙏`,
+    );
+    return { sent: true };
+  }
+
   async settlePayment(params: {
     invoiceNo: string;
     gateway: string;
