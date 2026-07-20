@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Ticket, Plus, RefreshCw, Trash2, Loader2, Printer, Ban, RefreshCcw,
+  Ticket, Plus, RefreshCw, Trash2, Loader2, Printer, Ban, RefreshCcw, Check,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCan } from '@/lib/rbac';
@@ -36,6 +36,9 @@ interface Voucher {
   buyerName: string | null;
   amount: string;
   createdAt: string;
+  paymentGateway: string | null;
+  paymentClaimedAt: string | null;
+  paymentNote: string | null;
 }
 
 interface Router {
@@ -738,6 +741,17 @@ export default function Hotspot() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['hotspot-vouchers'] }); qc.invalidateQueries({ queryKey: ['hotspot-stats'] }); },
   });
 
+  // Setujui pembayaran manual (QRIS statis/transfer) → voucher langsung aktif.
+  const approveMut = useMutation({
+    mutationFn: (id: string) => api.post(`/hotspot/vouchers/${id}/approve`),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['hotspot-vouchers'] });
+      qc.invalidateQueries({ queryKey: ['hotspot-stats'] });
+      alert(`Voucher ${res.data?.code ?? ''} aktif ✓ — user dibuat di Mikrotik & kode dikirim ke WA pembeli.`);
+    },
+    onError: (e: any) => alert(`Gagal menyetujui: ${e?.response?.data?.message ?? e.message}`),
+  });
+
   const deletePkg = useMutation({
     mutationFn: (id: number) => api.delete(`/hotspot/admin/packages/${id}`),
     onSuccess: () => refetchPkg(),
@@ -866,9 +880,24 @@ export default function Hotspot() {
                       <td className="px-4 py-3">{v.amount ? rupiah(v.amount) : '—'}</td>
                       <td className="px-4 py-3">
                         <span className={`badge ${tone[v.status] ?? 'bg-slate-100 text-slate-500'}`}>{v.status}</span>
+                        {v.status === 'pending' && v.paymentClaimedAt && (
+                          <div className="mt-1 text-xs text-amber-600" title={v.paymentNote ?? undefined}>
+                            💬 klaim sudah bayar
+                            {v.paymentNote ? <span className="text-slate-400"> — {v.paymentNote}</span> : null}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-1">
+                          {v.status === 'pending' && canAdmin && (
+                            <button className="btn-primary py-1 text-xs"
+                              title="Setujui pembayaran → aktifkan voucher"
+                              disabled={approveMut.isPending}
+                              onClick={() => confirm(`Setujui pembayaran voucher ${v.code}? Voucher akan langsung aktif.`) && approveMut.mutate(v.id)}>
+                              {approveMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                              Setujui
+                            </button>
+                          )}
                           {v.status === 'active' && <PrintVoucherBtn voucher={v} />}
                           {v.status !== 'void' && canAdmin && (
                             <button className="btn-ghost py-1 text-xs text-red-500"

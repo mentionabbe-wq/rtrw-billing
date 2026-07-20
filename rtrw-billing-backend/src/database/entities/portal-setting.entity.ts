@@ -31,4 +31,11 @@ export class PortalSetting {
 
   @Column({ name: 'footer_text', nullable: true })
   footerText: string;
+
+  /**
+   * QRIS statis (data URI base64). Dipakai bila belum pakai payment gateway —
+   * pelanggan scan lalu konfirmasi manual, admin menyetujui 1 klik.
+   */
+  @Column({ name: 'qris_image', type: 'text', nullable: true })
+  qrisImage: string | null;
 }

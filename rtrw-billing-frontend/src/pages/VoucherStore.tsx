@@ -18,11 +18,15 @@ interface Router {
   status: string;
 }
 
+interface BankAccount { bank: string; accountNo: string; accountName: string }
 interface PortalSettings {
   companyName: string;
   logoUrl: string | null;
   primaryColor: string;
   tagline: string;
+  qrisImage: string | null;
+  bankAccounts: BankAccount[];
+  whatsappNumber: string | null;
 }
 
 interface VoucherResult {
@@ -53,6 +57,10 @@ export default function VoucherStore() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ buyerName: '', buyerPhone: '', gateway: 'tripay' });
   const [payLinkResult, setPayLinkResult] = useState<{ code: string; url: string } | null>(null);
+  // Alur tanpa gateway: pesanan QRIS/transfer menunggu persetujuan admin.
+  const [manualOrder, setManualOrder] = useState<{ code: string; packageName: string; amount: string } | null>(null);
+  const [claimed, setClaimed] = useState(false);
+  const [claimNote, setClaimNote] = useState('');
 
   const { data: settings } = useQuery<PortalSettings>({
     queryKey: ['portal-settings'],
@@ -102,6 +110,9 @@ export default function VoucherStore() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gateways]);
 
+  // Tanpa gateway aktif → pakai alur QRIS statis / transfer manual.
+  const manualMode = gatewayOptions.length === 0;
+
   const purchase = useMutation({
     mutationFn: (body: any) => api.post('/hotspot/purchase', body),
     onSuccess: (res) => {
@@ -111,15 +122,32 @@ export default function VoucherStore() {
     onError: (e: any) => alert(`Gagal membuat pembayaran: ${e?.response?.data?.message ?? e.message}`),
   });
 
+  const order = useMutation({
+    mutationFn: (body: any) => api.post('/hotspot/order', body),
+    onSuccess: (res) => {
+      setManualOrder(res.data);
+      setClaimed(false);
+      setShowForm(false);
+    },
+    onError: (e: any) => alert(`Gagal membuat pesanan: ${e?.response?.data?.message ?? e.message}`),
+  });
+
+  const claim = useMutation({
+    mutationFn: () => api.post(`/hotspot/order/${manualOrder!.code}/claim`, { note: claimNote || undefined }),
+    onSuccess: () => setClaimed(true),
+    onError: (e: any) => alert(`Gagal mengirim konfirmasi: ${e?.response?.data?.message ?? e.message}`),
+  });
+
   const handleBuy = () => {
     if (!selectedPkg || !defaultRouter) return;
-    purchase.mutate({
+    const base = {
       packageId: selectedPkg.id,
       routerId: defaultRouter.id,
       buyerName: form.buyerName,
       buyerPhone: form.buyerPhone,
-      gateway: form.gateway,
-    });
+    };
+    if (manualMode) order.mutate(base);
+    else purchase.mutate({ ...base, gateway: form.gateway });
   };
 
   const color = settings?.primaryColor ?? '#012b6d';
@@ -303,11 +331,13 @@ export default function VoucherStore() {
               <button
                 className="flex-1 py-2 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50"
                 style={{ background: color }}
-                disabled={purchase.isPending}
+                disabled={purchase.isPending || order.isPending}
                 onClick={handleBuy}
               >
-                {purchase.isPending ? <Loader2 size={16} className="animate-spin" /> : <ExternalLink size={16} />}
-                Bayar
+                {(purchase.isPending || order.isPending)
+                  ? <Loader2 size={16} className="animate-spin" />
+                  : <ExternalLink size={16} />}
+                {manualMode ? 'Pesan & Bayar' : 'Bayar'}
               </button>
             </div>
           </div>
@@ -333,6 +363,96 @@ export default function VoucherStore() {
               onClick={() => setPayLinkResult(null)}>
               Tutup
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal pembayaran manual (QRIS statis / transfer) */}
+      {manualOrder && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-sm rounded-2xl p-6 space-y-4 shadow-xl my-8">
+            {claimed ? (
+              <>
+                <Clock className="text-amber-500 mx-auto" size={40} />
+                <h2 className="font-bold text-center">Menunggu Verifikasi</h2>
+                <p className="text-sm text-slate-500 text-center">
+                  Konfirmasi Anda sudah kami terima. Voucher akan aktif setelah admin
+                  memverifikasi pembayaran — biasanya beberapa menit.
+                </p>
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-center">
+                  <p className="text-xs text-slate-400 mb-1">Kode Pesanan</p>
+                  <p className="font-mono text-xl font-bold tracking-widest text-slate-800">{manualOrder.code}</p>
+                </div>
+                <p className="text-xs text-slate-400 text-center">
+                  Simpan kode ini. Cek status kapan saja di
+                  <span className="font-mono"> /voucher?code={manualOrder.code}</span>
+                </p>
+                {settings?.whatsappNumber && (
+                  <a href={`https://wa.me/${settings.whatsappNumber}?text=Halo,%20konfirmasi%20pembayaran%20voucher%20kode%20${manualOrder.code}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="w-full py-2.5 rounded-xl border border-slate-300 text-sm font-medium flex items-center justify-center gap-2 hover:bg-slate-50">
+                    Hubungi Admin via WhatsApp
+                  </a>
+                )}
+                <a href={`/voucher?code=${manualOrder.code}`}
+                  className="w-full py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2 hover:opacity-90"
+                  style={{ background: color }}>
+                  Cek Status Voucher
+                </a>
+              </>
+            ) : (
+              <>
+                <h2 className="font-bold text-center">Selesaikan Pembayaran</h2>
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-center">
+                  <p className="text-xs text-slate-400">{manualOrder.packageName}</p>
+                  <p className="text-2xl font-extrabold" style={{ color }}>{rupiah(manualOrder.amount)}</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Kode: <span className="font-mono font-semibold text-slate-700">{manualOrder.code}</span>
+                  </p>
+                </div>
+
+                {settings?.qrisImage && (
+                  <div className="text-center">
+                    <p className="text-xs font-medium text-slate-600 mb-2">Scan QRIS</p>
+                    <img src={settings.qrisImage} alt="QRIS"
+                      className="w-52 h-52 object-contain mx-auto rounded-xl border border-slate-200 bg-white p-2" />
+                  </div>
+                )}
+
+                {settings?.bankAccounts?.length ? (
+                  <div className="rounded-lg border border-slate-200 p-3 space-y-2">
+                    <p className="text-xs font-medium text-slate-600">Atau transfer ke:</p>
+                    {settings.bankAccounts.map((b, i) => (
+                      <div key={i} className="text-sm">
+                        <span className="font-semibold">{b.bank}</span>{' '}
+                        <span className="font-mono">{b.accountNo}</span>
+                        <div className="text-xs text-slate-400">a.n. {b.accountName}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div>
+                  <label className="text-xs font-medium text-slate-600">Catatan (opsional)</label>
+                  <input className="input mt-1" placeholder="mis. nama pengirim / jam transfer"
+                    value={claimNote} onChange={(e) => setClaimNote(e.target.value)} />
+                </div>
+
+                <button
+                  className="w-full py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50"
+                  style={{ background: color }}
+                  disabled={claim.isPending}
+                  onClick={() => claim.mutate()}
+                >
+                  {claim.isPending ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                  Saya Sudah Bayar
+                </button>
+                <button className="w-full text-sm text-slate-400 hover:text-slate-600 py-1"
+                  onClick={() => setManualOrder(null)}>
+                  Batal
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

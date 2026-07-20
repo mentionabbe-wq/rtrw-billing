@@ -58,6 +58,14 @@ export class HotspotVoucher {
   @Column({ name: 'expires_at', type: 'timestamptz', nullable: true })
   expiresAt: Date;
 
+  /** Waktu pembeli mengklaim "sudah bayar" (alur QRIS statis / transfer). */
+  @Column({ name: 'payment_claimed_at', type: 'timestamptz', nullable: true })
+  paymentClaimedAt: Date | null;
+
+  /** Catatan pembeli saat klaim bayar (mis. nama pengirim / jam transfer). */
+  @Column({ name: 'payment_note', nullable: true })
+  paymentNote: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

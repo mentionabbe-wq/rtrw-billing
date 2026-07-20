@@ -230,6 +230,9 @@ export class HotspotService {
       amount: v.amount,
       expiresAt: v.expiresAt,
       createdAt: v.createdAt,
+      paymentGateway: v.paymentGateway ?? null,
+      paymentClaimedAt: v.paymentClaimedAt ?? null,
+      paymentNote: v.paymentNote ?? null,
     }));
   }
 
@@ -361,6 +364,70 @@ export class HotspotService {
     await this.vouchers.update({ code }, { paymentRef: result.reference, paymentGateway: result.gateway });
 
     return { code, paymentUrl: result.paymentUrl, gateway: result.gateway };
+  }
+
+  /**
+   * Pemesanan voucher TANPA payment gateway (bayar QRIS statis/transfer).
+   * Voucher dibuat berstatus pending; aktivasi menunggu persetujuan admin.
+   */
+  async orderVoucher(dto: {
+    packageId: number; routerId: string; buyerName?: string; buyerPhone?: string;
+  }) {
+    const pkg = await this.pkgs.findOneOrFail({ where: { id: dto.packageId } });
+
+    const code = this.genCode();
+    const v = this.vouchers.create();
+    v.code = code;
+    v.username = code;
+    v.passwordEnc = this.crypto.encrypt(code) as Buffer;
+    v.packageId = dto.packageId;
+    v.routerId = dto.routerId;
+    v.status = 'pending';
+    v.buyerName = dto.buyerName ?? null;
+    v.buyerPhoneEnc = dto.buyerPhone ? (this.crypto.encrypt(dto.buyerPhone) as Buffer) : null;
+    v.amount = pkg.price;
+    v.paymentGateway = 'manual';
+    await this.vouchers.save(v);
+
+    return { code, packageName: pkg.name, amount: pkg.price };
+  }
+
+  /**
+   * Pembeli mengklaim sudah membayar (QRIS statis/transfer) → tandai & beri
+   * tahu admin. Aktivasi tetap menunggu persetujuan admin.
+   */
+  async claimPayment(code: string, note?: string) {
+    const v = await this.vouchers.findOne({ where: { code }, relations: { package: true } });
+    if (!v) throw new NotFoundException('Kode pesanan tidak ditemukan');
+    if (v.status === 'active') return { ok: true, alreadyActive: true };
+
+    await this.vouchers.update(v.id, {
+      paymentClaimedAt: new Date(),
+      paymentNote: note?.slice(0, 200) ?? null,
+    });
+
+    await this.wa.notifyAdmin(
+      `🔔 Konfirmasi bayar voucher menunggu persetujuan\n` +
+      `Kode: ${v.code}\n` +
+      `Paket: ${v.package?.name ?? '-'} — Rp ${Number(v.amount).toLocaleString('id-ID')}\n` +
+      `Pembeli: ${v.buyerName ?? '-'}\n` +
+      `${note ? `Catatan: ${note}\n` : ''}` +
+      `Setujui di menu Hotspot Voucher → filter Pending.`,
+    );
+    return { ok: true };
+  }
+
+  /**
+   * Admin menyetujui pembayaran manual → voucher aktif, user dibuat di
+   * Mikrotik, kode dikirim ke WA pembeli (bila nomornya ada).
+   */
+  async approveVoucher(id: string) {
+    const v = await this.vouchers.findOne({ where: { id }, relations: { package: true } });
+    if (!v) throw new NotFoundException('Voucher tidak ditemukan');
+    if (v.status === 'active') return { ok: true, alreadyActive: true };
+
+    await this.activateByCode(v.code, `manual-${Date.now()}`, v.amount ?? '0', 'manual');
+    return { ok: true, code: v.code };
   }
 
   /**

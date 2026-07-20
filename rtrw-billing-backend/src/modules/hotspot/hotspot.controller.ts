@@ -43,6 +43,20 @@ export class HotspotController {
     return this.svc.getByCode(code);
   }
 
+  /** Pesan voucher TANPA gateway (bayar QRIS statis/transfer). */
+  @Post('order')
+  order(@Body() body: {
+    packageId: number; routerId: string; buyerName?: string; buyerPhone?: string;
+  }) {
+    return this.svc.orderVoucher(body);
+  }
+
+  /** Pembeli klaim sudah bayar → admin diberi tahu utk menyetujui. */
+  @Post('order/:code/claim')
+  claim(@Param('code') code: string, @Body('note') note?: string) {
+    return this.svc.claimPayment(code, note);
+  }
+
   /** Beli voucher online → kembalikan payment URL. */
   @Post('purchase')
   purchase(@Body() body: {
@@ -90,6 +104,14 @@ export class HotspotController {
   @Roles('admin')
   voidVoucher(@Param('id') id: string) {
     return this.svc.voidVoucher(id);
+  }
+
+  /** Setujui pembayaran manual (QRIS/transfer) → voucher aktif. */
+  @Post('vouchers/:id/approve')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'finance', 'operator')
+  approveVoucher(@Param('id') id: string) {
+    return this.svc.approveVoucher(id);
   }
 
   /** Sinkronisasi hotspot user dari Mikrotik ke DB voucher. */

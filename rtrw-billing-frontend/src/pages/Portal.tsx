@@ -11,6 +11,7 @@ interface PortalSettings {
   paymentInstructions?: string;
   bankAccounts: { bank: string; accountNo: string; accountName: string }[];
   footerText?: string;
+  qrisImage?: string | null;
 }
 
 const DEFAULT: PortalSettings = {
@@ -60,6 +61,22 @@ export default function Portal() {
           <h1 className="text-xl font-bold text-slate-800 mb-2">Internet Ditangguhkan</h1>
           <p className="text-slate-600 text-sm leading-relaxed">{cfg.suspendMessage}</p>
         </div>
+
+        {/* QRIS statis */}
+        {cfg.qrisImage && (
+          <div className="w-full">
+            <div className="flex items-center gap-2 mb-3">
+              <CreditCard size={16} className="text-slate-500" />
+              <span className="text-sm font-semibold text-slate-700">Scan QRIS</span>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 flex justify-center">
+              <img src={cfg.qrisImage} alt="QRIS" className="w-56 h-56 object-contain" />
+            </div>
+            <p className="mt-2 text-center text-xs text-slate-500">
+              Setelah membayar, konfirmasi ke admin agar internet segera diaktifkan.
+            </p>
+          </div>
+        )}
 
         {/* Bank accounts */}
         {cfg.bankAccounts.length > 0 && (

@@ -291,7 +291,7 @@ interface BankAccount { bank: string; accountNo: string; accountName: string }
 interface PortalSettings {
   companyName: string; logoUrl: string; primaryColor: string; tagline: string;
   suspendMessage: string; whatsappNumber: string; paymentInstructions: string;
-  bankAccounts: BankAccount[]; footerText: string;
+  bankAccounts: BankAccount[]; footerText: string; qrisImage: string | null;
 }
 
 function PortalPanel() {
@@ -407,6 +407,9 @@ function PortalPanel() {
         </form>
       </div>
 
+      {/* QRIS statis */}
+      <QrisPanel data={data} onSave={(qrisImage) => save.mutate({ qrisImage })} saving={save.isPending} />
+
       {/* Bank accounts */}
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4">
@@ -460,6 +463,71 @@ add chain=dstnat src-address-list=isolir protocol=tcp dst-port=443 \\
           </form>
         </Modal>
       )}
+    </div>
+  );
+}
+
+/* --------------------------- QRIS statis --------------------------- */
+function QrisPanel({ data, onSave, saving }: {
+  data?: PortalSettings; onSave: (qrisImage: string | null) => void; saving: boolean;
+}) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const current = preview ?? data?.qrisImage ?? null;
+
+  function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!/^image\/(png|jpe?g)$/.test(file.type)) {
+      alert('Format harus JPG atau PNG.');
+      return;
+    }
+    if (file.size > 600 * 1024) {
+      alert('Ukuran gambar maksimal 600 KB. Kompres dulu (mis. lewat tinypng.com).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setPreview(String(reader.result));
+    reader.readAsDataURL(file);
+  }
+
+  return (
+    <div className="card p-5">
+      <h3 className="font-semibold text-sm text-slate-700 mb-1">QRIS Statis</h3>
+      <p className="text-xs text-slate-400 mb-4">
+        Untuk pembayaran tanpa payment gateway. QRIS ini tampil di halaman beli voucher
+        &amp; portal bayar. Pelanggan scan → klik "Saya sudah bayar" → Anda setujui 1 klik.
+      </p>
+
+      <div className="flex flex-wrap gap-5 items-start">
+        <div className="w-44 h-44 rounded-xl border-2 border-dashed border-slate-200 bg-white flex items-center justify-center overflow-hidden shrink-0">
+          {current
+            ? <img src={current} alt="QRIS" className="w-full h-full object-contain" />
+            : <span className="text-xs text-slate-400 text-center px-3">Belum ada QRIS</span>}
+        </div>
+
+        <div className="flex-1 min-w-[15rem] space-y-2">
+          <input type="file" accept="image/png,image/jpeg" onChange={onPick}
+            className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-slate-200" />
+          <p className="text-xs text-slate-400">Format JPG/PNG, maksimal 600 KB.</p>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <button className="btn-primary text-sm" disabled={!preview || saving}
+              onClick={() => { onSave(preview); setPreview(null); }}>
+              {saving ? <Loader2 className="animate-spin" size={15} /> : <Plus size={15} />} Simpan QRIS
+            </button>
+            {current && (
+              <>
+                <a className="btn-ghost text-sm text-brand-600" href={current} download="qris.png">
+                  <Download size={15} /> Unduh
+                </a>
+                <button className="btn-ghost text-sm text-rose-600" disabled={saving}
+                  onClick={() => { if (confirm('Hapus QRIS?')) { setPreview(null); onSave(null); } }}>
+                  <Trash2 size={15} /> Hapus
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
