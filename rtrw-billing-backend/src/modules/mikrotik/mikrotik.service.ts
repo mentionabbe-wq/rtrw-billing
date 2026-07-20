@@ -127,6 +127,71 @@ export class MikrotikService {
     }
   }
 
+  /**
+   * Buat/update PPP profile di Mikrotik dari definisi paket. Idempotent —
+   * profile yang sudah ada di-set ulang, yang belum ada dibuat.
+   */
+  async upsertPppProfile(router: Router, p: {
+    name: string;
+    rateLimit?: string | null;
+    localAddress?: string | null;
+    remoteAddress?: string | null;
+    dnsServer?: string | null;
+    onlyOne?: string | null;
+    parentQueue?: string | null;
+    insertQueueBefore?: string | null;
+  }): Promise<void> {
+    const conn = await this.connect(router);
+    try {
+      // only-one hanya dikirim bila bukan 'default' (RouterOS: default|yes|no).
+      const params = [
+        ...(p.rateLimit ? [`=rate-limit=${p.rateLimit}`] : []),
+        ...(p.localAddress ? [`=local-address=${p.localAddress}`] : []),
+        ...(p.remoteAddress ? [`=remote-address=${p.remoteAddress}`] : []),
+        ...(p.dnsServer ? [`=dns-server=${p.dnsServer}`] : []),
+        ...(p.onlyOne && p.onlyOne !== 'default' ? [`=only-one=${p.onlyOne}`] : []),
+        ...(p.parentQueue ? [`=parent-queue=${p.parentQueue}`] : []),
+        ...(p.insertQueueBefore ? [`=insert-queue-before=${p.insertQueueBefore}`] : []),
+      ];
+      const existing = await conn.write('/ppp/profile/print', [`?name=${p.name}`]);
+      if (existing.length) {
+        await conn.write('/ppp/profile/set', [`=.id=${existing[0]['.id']}`, ...params]);
+      } else {
+        await conn.write('/ppp/profile/add', [`=name=${p.name}`, ...params]);
+      }
+    } catch (e: any) {
+      throw new Error(`Mikrotik [${router.name}]: ${e?.message ?? String(e)}`);
+    } finally {
+      conn.close();
+    }
+  }
+
+  /** Daftar simple queue (untuk pilihan parent-queue / insert-queue-before). */
+  async listQueues(router: Router): Promise<Array<{ name: string }>> {
+    const conn = await this.connect(router);
+    try {
+      const rows = await conn.write('/queue/simple/print');
+      return rows.map((r) => ({ name: r.name })).filter((r) => !!r.name);
+    } catch {
+      return [];
+    } finally {
+      conn.close();
+    }
+  }
+
+  /** Daftar IP pool (untuk pilihan remote-address). */
+  async listIpPools(router: Router): Promise<Array<{ name: string; ranges: string }>> {
+    const conn = await this.connect(router);
+    try {
+      const rows = await conn.write('/ip/pool/print');
+      return rows.map((r) => ({ name: r.name, ranges: r.ranges ?? '' })).filter((r) => !!r.name);
+    } catch {
+      return [];
+    } finally {
+      conn.close();
+    }
+  }
+
   /** Daftar interface/port di router (untuk grafik trafik). */
   async listInterfaces(router: Router): Promise<any[]> {
     const conn = await this.connect(router);

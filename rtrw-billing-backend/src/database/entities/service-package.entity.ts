@@ -22,6 +22,26 @@ export class ServicePackage {
   @Column({ name: 'ip_pool', nullable: true })
   ipPool: string;
 
+  /** local-address PPP profile (IP gateway router utk klien). */
+  @Column({ name: 'local_address', nullable: true })
+  localAddress: string | null;
+
+  /** DNS server yang didorong ke klien, dipisah koma. */
+  @Column({ name: 'dns_server', nullable: true })
+  dnsServer: string | null;
+
+  /** only-one PPP profile: 'default' | 'yes' | 'no'. */
+  @Column({ name: 'only_one', default: 'default' })
+  onlyOne: string;
+
+  /** parent-queue utk simple queue (limitasi global). */
+  @Column({ name: 'parent_queue', nullable: true })
+  parentQueue: string | null;
+
+  /** insert-queue-before — urutan penempatan di simple queue. */
+  @Column({ name: 'insert_queue_before', nullable: true })
+  insertQueueBefore: string | null;
+
   @Column({ name: 'billing_cycle', type: 'smallint', default: 30 })
   billingCycle: number;
 
