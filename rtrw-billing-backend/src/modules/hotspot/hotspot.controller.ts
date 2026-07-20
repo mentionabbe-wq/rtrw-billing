@@ -53,8 +53,8 @@ export class HotspotController {
 
   /** Pembeli klaim sudah bayar → admin diberi tahu utk menyetujui. */
   @Post('order/:code/claim')
-  claim(@Param('code') code: string, @Body('note') note?: string) {
-    return this.svc.claimPayment(code, note);
+  claim(@Param('code') code: string, @Body() body: { note?: string; proofImage?: string }) {
+    return this.svc.claimPayment(code, body?.note, body?.proofImage);
   }
 
   /** Beli voucher online → kembalikan payment URL. */

@@ -396,7 +396,7 @@ export class HotspotService {
    * Pembeli mengklaim sudah membayar (QRIS statis/transfer) → tandai & beri
    * tahu admin. Aktivasi tetap menunggu persetujuan admin.
    */
-  async claimPayment(code: string, note?: string) {
+  async claimPayment(code: string, note?: string, proofImage?: string) {
     const v = await this.vouchers.findOne({ where: { code }, relations: { package: true } });
     if (!v) throw new NotFoundException('Kode pesanan tidak ditemukan');
     if (v.status === 'active') return { ok: true, alreadyActive: true };
@@ -406,14 +406,16 @@ export class HotspotService {
       paymentNote: note?.slice(0, 200) ?? null,
     });
 
-    await this.wa.notifyAdmin(
+    const caption =
       `🔔 Konfirmasi bayar voucher menunggu persetujuan\n` +
       `Kode: ${v.code}\n` +
       `Paket: ${v.package?.name ?? '-'} — Rp ${Number(v.amount).toLocaleString('id-ID')}\n` +
       `Pembeli: ${v.buyerName ?? '-'}\n` +
       `${note ? `Catatan: ${note}\n` : ''}` +
-      `Setujui di menu Hotspot Voucher → filter Pending.`,
-    );
+      `Setujui di menu Hotspot Voucher → filter Pending.`;
+
+    if (proofImage) await this.wa.notifyAdminPhoto(caption, proofImage);
+    else await this.wa.notifyAdmin(caption);
     return { ok: true };
   }
 

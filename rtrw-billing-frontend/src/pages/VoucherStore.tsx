@@ -61,6 +61,7 @@ export default function VoucherStore() {
   const [manualOrder, setManualOrder] = useState<{ code: string; packageName: string; amount: string } | null>(null);
   const [claimed, setClaimed] = useState(false);
   const [claimNote, setClaimNote] = useState('');
+  const [claimProof, setClaimProof] = useState<string | null>(null);
 
   const { data: settings } = useQuery<PortalSettings>({
     queryKey: ['portal-settings'],
@@ -133,10 +134,23 @@ export default function VoucherStore() {
   });
 
   const claim = useMutation({
-    mutationFn: () => api.post(`/hotspot/order/${manualOrder!.code}/claim`, { note: claimNote || undefined }),
+    mutationFn: () => api.post(`/hotspot/order/${manualOrder!.code}/claim`, {
+      note: claimNote || undefined,
+      proofImage: claimProof ?? undefined,
+    }),
     onSuccess: () => setClaimed(true),
     onError: (e: any) => alert(`Gagal mengirim konfirmasi: ${e?.response?.data?.message ?? e.message}`),
   });
+
+  function pickProof(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!/^image\//.test(file.type)) { alert('File harus berupa gambar.'); return; }
+    if (file.size > 3 * 1024 * 1024) { alert('Ukuran gambar maksimal 3 MB.'); return; }
+    const reader = new FileReader();
+    reader.onload = () => setClaimProof(String(reader.result));
+    reader.readAsDataURL(file);
+  }
 
   const handleBuy = () => {
     if (!selectedPkg || !defaultRouter) return;
@@ -431,6 +445,23 @@ export default function VoucherStore() {
                     ))}
                   </div>
                 ) : null}
+
+                <div>
+                  <label className="text-xs font-medium text-slate-600">Bukti Transfer (opsional)</label>
+                  {claimProof ? (
+                    <div className="mt-1 relative">
+                      <img src={claimProof} alt="Bukti" className="w-full max-h-48 object-contain rounded-lg border border-slate-200 bg-slate-50" />
+                      <button className="absolute top-2 right-2 rounded-full bg-white/90 p-1 shadow text-slate-500"
+                        onClick={() => setClaimProof(null)}>✕</button>
+                    </div>
+                  ) : (
+                    <label className="mt-1 flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-200 py-5 cursor-pointer hover:border-slate-300">
+                      <span className="text-xs text-slate-500">Ketuk untuk pilih foto</span>
+                      <span className="text-xs text-slate-400">JPG/PNG, maks 3 MB</span>
+                      <input type="file" accept="image/*" className="hidden" onChange={pickProof} />
+                    </label>
+                  )}
+                </div>
 
                 <div>
                   <label className="text-xs font-medium text-slate-600">Catatan (opsional)</label>

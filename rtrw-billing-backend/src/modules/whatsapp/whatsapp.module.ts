@@ -49,6 +49,44 @@ export class WhatsappService {
     await this.sendRaw(adminPhone, text);
   }
 
+  /**
+   * Notifikasi ke admin BESERTA gambar (mis. bukti transfer). Dikirim via
+   * Telegram sendPhoto bila aktif; bila tidak, jatuh ke pesan teks biasa.
+   */
+  async notifyAdminPhoto(caption: string, dataUri: string): Promise<void> {
+    const tg = await this.integrations.resolveTelegram();
+    if (!tg.notifyEnabled || !tg.botToken || !tg.chatId) {
+      await this.notifyAdmin(`${caption}\n\n(Bukti transfer terlampir hanya dapat dikirim via Telegram.)`);
+      return;
+    }
+    const m = /^data:(image\/[a-zA-Z+]+);base64,(.+)$/.exec(dataUri ?? '');
+    if (!m) {
+      await this.notifyAdmin(caption);
+      return;
+    }
+    try {
+      const buf = Buffer.from(m[2], 'base64');
+      const ext = m[1].includes('png') ? 'png' : 'jpg';
+      const form = new FormData();
+      form.append('chat_id', tg.chatId);
+      form.append('caption', caption.slice(0, 1024));
+      form.append('photo', new Blob([buf], { type: m[1] }), `bukti.${ext}`);
+
+      const res = await fetch(`https://api.telegram.org/bot${tg.botToken}/sendPhoto`, {
+        method: 'POST',
+        body: form as any,
+      });
+      const json: any = await res.json().catch(() => ({}));
+      if (!json.ok) {
+        this.logger.warn(`Telegram sendPhoto gagal: ${json.description ?? res.status}`);
+        await this.notifyAdmin(caption);
+      }
+    } catch (e) {
+      this.logger.warn(`Telegram sendPhoto error: ${(e as Error).message}`);
+      await this.notifyAdmin(caption);
+    }
+  }
+
   /** Kirim pesan via Telegram Bot API. */
   private async sendTelegram(botToken: string, chatId: string, text: string): Promise<void> {
     try {
