@@ -2,11 +2,17 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: true });
   const config = app.get(ConfigService);
+
+  // Batas bawaan Express 100 KB terlalu kecil untuk unggahan gambar base64
+  // (mis. QRIS statis & logo portal) — request akan ditolak 413 tanpa jejak.
+  app.use(json({ limit: '10mb' }));
+  app.use(urlencoded({ extended: true, limit: '10mb' }));
 
   app.setGlobalPrefix('api');
   app.enableCors({ origin: config.get('corsOrigin'), credentials: true });

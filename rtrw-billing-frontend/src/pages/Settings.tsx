@@ -307,6 +307,14 @@ function PortalPanel() {
   const save = useMutation({
     mutationFn: (body: any) => api.patch('/portal/settings', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['portal-settings'] }),
+    onError: (e: any) => {
+      const status = e?.response?.status;
+      alert(
+        status === 413
+          ? 'Gagal menyimpan: gambar terlalu besar untuk server. Kompres dulu (mis. lewat tinypng.com) atau update aplikasi ke versi terbaru.'
+          : `Gagal menyimpan: ${e?.response?.data?.message ?? e?.message ?? 'error'}`,
+      );
+    },
   });
 
   const [color, setColor] = useState(data?.primaryColor ?? '#012b6d');
@@ -511,7 +519,7 @@ function QrisPanel({ data, onSave, saving }: {
           <p className="text-xs text-slate-400">Format JPG/PNG, maksimal 600 KB.</p>
           <div className="flex flex-wrap gap-2 pt-1">
             <button className="btn-primary text-sm" disabled={!preview || saving}
-              onClick={() => { onSave(preview); setPreview(null); }}>
+              onClick={() => onSave(preview)}>
               {saving ? <Loader2 className="animate-spin" size={15} /> : <Plus size={15} />} Simpan QRIS
             </button>
             {current && (
