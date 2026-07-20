@@ -277,5 +277,6 @@ export class GenieacsController {
   imports: [TypeOrmModule.forFeature([Router, Subscription, Device]), MikrotikModule],
   controllers: [GenieacsController],
   providers: [GenieacsService],
+  exports: [GenieacsService],
 })
 export class GenieacsModule {}

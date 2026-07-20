@@ -17,6 +17,7 @@ import Security from '@/pages/Security';
 import Portal from '@/pages/Portal';
 import Hotspot from '@/pages/Hotspot';
 import VoucherStore from '@/pages/VoucherStore';
+import CustomerPortal from '@/pages/CustomerPortal';
 import Finance from '@/pages/Finance';
 
 function RequireCap({ cap, children }: { cap: Capability; children: ReactNode }) {
@@ -30,6 +31,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/portal" element={<Portal />} />
       <Route path="/voucher" element={<VoucherStore />} />
+      <Route path="/pelanggan" element={<CustomerPortal />} />
       <Route
         element={
           <ProtectedRoute>
