@@ -5,7 +5,7 @@ import {
 import { TypeOrmModule, InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { MapCable, MapNode } from '@database/entities';
+import { Device, MapCable, MapNode, Olt, Router } from '@database/entities';
 import { JwtAuthGuard } from '@modules/auth/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { Roles } from '@common/decorators/roles.decorator';
@@ -15,6 +15,9 @@ export class MapService {
   constructor(
     @InjectRepository(MapNode) private readonly nodes: Repository<MapNode>,
     @InjectRepository(MapCable) private readonly cables: Repository<MapCable>,
+    @InjectRepository(Olt) private readonly olts: Repository<Olt>,
+    @InjectRepository(Router) private readonly routers: Repository<Router>,
+    @InjectRepository(Device) private readonly devices: Repository<Device>,
   ) {}
 
   async all() {
@@ -22,7 +25,38 @@ export class MapService {
       this.nodes.find({ order: { id: 'ASC' } }),
       this.cables.find({ order: { id: 'ASC' } }),
     ]);
-    return { nodes, cables };
+
+    // Status OTOMATIS dari perangkat tertaut (bila node.refType diisi).
+    const [olts, routers, devices] = await Promise.all([
+      this.olts.find(),
+      this.routers.find(),
+      this.devices.find({ where: { type: 'onu' }, relations: { subscription: true } }),
+    ]);
+    const oltById = new Map(olts.map((o) => [String(o.id), o]));
+    const routerById = new Map(routers.map((r) => [String(r.id), r]));
+    const devBySub = new Map(devices.filter((d) => d.subscription).map((d) => [String(d.subscription.id), d]));
+
+    const live = (n: MapNode): string => {
+      if (n.refType === 'olt' && n.refId) {
+        const o = oltById.get(n.refId);
+        return o ? (o.status === 'online' ? 'up' : 'down') : n.status;
+      }
+      if (n.refType === 'router' && n.refId) {
+        const r = routerById.get(n.refId);
+        return r ? (r.status === 'online' ? 'up' : 'down') : n.status;
+      }
+      if (n.refType === 'subscription' && n.refId) {
+        const d = devBySub.get(n.refId);
+        if (!d) return n.status;
+        return (d.lastStatus === 'los' || d.lastStatus === 'offline') ? 'down' : 'up';
+      }
+      return n.status;
+    };
+
+    return {
+      nodes: nodes.map((n) => ({ ...n, liveStatus: live(n) })),
+      cables,
+    };
   }
 
   // ── Nodes ──
@@ -37,6 +71,8 @@ export class MapService {
       capacityUsed: dto.capacityUsed ?? null,
       color: dto.color ?? null,
       status: dto.status ?? 'up',
+      refType: dto.refType ?? null,
+      refId: dto.refId ?? null,
     }));
   }
 
@@ -53,6 +89,8 @@ export class MapService {
       ...(dto.capacityUsed !== undefined && { capacityUsed: dto.capacityUsed }),
       ...(dto.color !== undefined && { color: dto.color || null }),
       ...(dto.status !== undefined && { status: dto.status }),
+      ...(dto.refType !== undefined && { refType: dto.refType || null }),
+      ...(dto.refId !== undefined && { refId: dto.refId || null }),
     });
     return this.nodes.save(n);
   }
@@ -115,7 +153,7 @@ export class MapController {
 }
 
 @Module({
-  imports: [TypeOrmModule.forFeature([MapNode, MapCable])],
+  imports: [TypeOrmModule.forFeature([MapNode, MapCable, Olt, Router, Device])],
   controllers: [MapController],
   providers: [MapService],
 })

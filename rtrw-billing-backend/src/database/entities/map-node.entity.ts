@@ -37,9 +37,19 @@ export class MapNode {
   @Column({ nullable: true })
   color: string | null;
 
-  /** up | down — bila down, memutus aliran ke titik & kabel di bawahnya. */
+  /** up | down manual (fallback bila tak ditautkan ke perangkat). */
   @Column({ default: 'up' })
   status: string;
+
+  /**
+   * Tautan ke perangkat nyata utk status otomatis:
+   * 'olt' | 'router' | 'subscription' (ONU pelanggan). Kosong = pakai `status` manual.
+   */
+  @Column({ name: 'ref_type', nullable: true })
+  refType: string | null;
+
+  @Column({ name: 'ref_id', nullable: true })
+  refId: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

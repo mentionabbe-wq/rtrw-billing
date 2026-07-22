@@ -11,7 +11,13 @@ interface Node {
   id: string; type: string; name: string; lat: string; lng: string;
   description: string | null; capacityTotal: number | null; capacityUsed: number | null;
   color: string | null; status: string;
+  refType: string | null; refId: string | null;
+  /** Status efektif hasil deteksi otomatis dari perangkat tertaut. */
+  liveStatus?: string;
 }
+
+/** Status efektif: dari perangkat tertaut bila ada, jika tidak status manual. */
+const eff = (n: Node) => n.liveStatus ?? n.status;
 interface CableT {
   id: string; name: string; type: string; cores: number;
   path: [number, number][]; color: string | null; description: string | null; status: string;
@@ -30,7 +36,7 @@ function computeAlive(nodes: Node[], cables: CableT[]): Set<string> {
   const sources: string[] = [];
   for (const n of nodes) {
     const k = ptKey(Number(n.lat), Number(n.lng));
-    if (n.status === 'down') downPoints.add(k);
+    if (eff(n) === 'down') downPoints.add(k);
     else if (n.type === 'server' || n.type === 'olt') sources.push(k);
   }
 
@@ -52,8 +58,8 @@ function computeAlive(nodes: Node[], cables: CableT[]): Set<string> {
     const p = queue.shift()!;
     for (const e of adj.get(p) ?? []) {
       if (!e.up) continue;                 // kabel putus → hilir mati
+      if (downPoints.has(e.other)) continue; // ujung (OLT/ONU) mati → segmen ini mati
       alive.add(e.id);                     // kabel ini teraliri dari sisi sumber
-      if (downPoints.has(e.other)) continue;
       if (!reachable.has(e.other)) { reachable.add(e.other); queue.push(e.other); }
     }
   }
@@ -100,6 +106,17 @@ export default function NetworkMap() {
   const { data } = useQuery<{ nodes: Node[]; cables: CableT[] }>({
     queryKey: ['map'],
     queryFn: async () => (await api.get('/map')).data,
+    refetchInterval: 30000, // status perangkat tertaut menyegar tiap 30 dtk
+  });
+  // Daftar perangkat untuk menautkan titik → status otomatis.
+  const { data: olts } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['olts'], queryFn: async () => (await api.get('/olts')).data, enabled: canEdit,
+  });
+  const { data: routers } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['routers'], queryFn: async () => (await api.get('/routers')).data, enabled: canEdit,
+  });
+  const { data: customers } = useQuery<{ id: string; fullName: string; customerNo: string; subscriptionId: string | null }[]>({
+    queryKey: ['customers'], queryFn: async () => (await api.get('/customers')).data, enabled: canEdit,
   });
 
   // Mode interaksi: null | 'add-node' | 'draw-cable'
@@ -217,7 +234,7 @@ export default function NetworkMap() {
           </span>
         ))}
         <span className="w-px bg-slate-200 mx-1" />
-        <span className="text-slate-400">Garis bergerak = teraliri · abu-abu = putus/tak tersambung</span>
+        <span className="text-slate-400">Garis bergerak = teraliri · abu-abu = mati/tak tersambung · status OLT &amp; ONU terdeteksi otomatis (segar tiap 30 dtk)</span>
       </div>
 
       <div className="card overflow-hidden" style={{ height: '70vh' }}>
@@ -261,18 +278,22 @@ export default function NetworkMap() {
           )}
 
           {/* Titik */}
-          {data?.nodes.map((n) => (
-            <Marker key={`${n.id}-${n.status}`} position={[Number(n.lat), Number(n.lng)]}
-              icon={nodeIcon(n.type, n.status === 'down' ? '#94a3b8' : n.color)}
-              eventHandlers={{ click: () => canEdit && setNodeForm(n) }}>
-              <Popup>
-                <b>{n.name}</b> {n.status === 'down' && '🔴'}<br />
-                {NODE_TYPES[n.type]?.label ?? n.type}
-                {n.capacityTotal != null && <><br />Port: {n.capacityUsed ?? 0}/{n.capacityTotal}</>}
-                {n.description && <><br />{n.description}</>}
-              </Popup>
-            </Marker>
-          ))}
+          {data?.nodes.map((n) => {
+            const down = eff(n) === 'down';
+            return (
+              <Marker key={`${n.id}-${eff(n)}`} position={[Number(n.lat), Number(n.lng)]}
+                icon={nodeIcon(n.type, down ? '#94a3b8' : n.color)}
+                eventHandlers={{ click: () => canEdit && setNodeForm(n) }}>
+                <Popup>
+                  <b>{n.name}</b> {down ? '🔴' : '🟢'}<br />
+                  {NODE_TYPES[n.type]?.label ?? n.type}
+                  {n.refType && <> · <span style={{ color: '#059669' }}>auto</span></>}
+                  {n.capacityTotal != null && <><br />Port: {n.capacityUsed ?? 0}/{n.capacityTotal}</>}
+                  {n.description && <><br />{n.description}</>}
+                </Popup>
+              </Marker>
+            );
+          })}
         </MapContainer>
       </div>
 
@@ -286,6 +307,7 @@ export default function NetworkMap() {
       {nodeForm && (
         <NodeModal
           node={nodeForm}
+          olts={olts ?? []} routers={routers ?? []} customers={customers ?? []}
           onClose={() => setNodeForm(null)}
           onSave={(body) => saveNode.mutate({ id: nodeForm.id, body })}
           onDelete={nodeForm.id ? () => confirm('Hapus titik ini?') && delNode.mutate(nodeForm.id!) : undefined}
@@ -305,12 +327,22 @@ export default function NetworkMap() {
   );
 }
 
-function NodeModal({ node, onClose, onSave, onDelete, saving }: {
-  node: Partial<Node>; onClose: () => void; onSave: (b: any) => void; onDelete?: () => void; saving: boolean;
+function NodeModal({ node, olts, routers, customers, onClose, onSave, onDelete, saving }: {
+  node: Partial<Node>;
+  olts: { id: string; name: string }[];
+  routers: { id: string; name: string }[];
+  customers: { id: string; fullName: string; customerNo: string; subscriptionId: string | null }[];
+  onClose: () => void; onSave: (b: any) => void; onDelete?: () => void; saving: boolean;
 }) {
   const [type, setType] = useState(node.type ?? 'odp');
   const [status, setStatus] = useState(node.status ?? 'up');
+  const [refType, setRefType] = useState(node.refType ?? '');
+  const [refId, setRefId] = useState(node.refId ?? '');
   const isSplitter = type === 'odp' || type === 'odc';
+
+  // Saran tautan sesuai jenis: OLT→olt, Server→router, ONU→langganan pelanggan.
+  const refKind = type === 'olt' ? 'olt' : type === 'server' ? 'router' : type === 'onu' ? 'subscription' : '';
+
   return (
     <Modal title={node.id ? 'Edit Titik' : 'Tambah Titik'} onClose={onClose} onDelete={onDelete}>
       <form onSubmit={(e) => {
@@ -318,6 +350,8 @@ function NodeModal({ node, onClose, onSave, onDelete, saving }: {
         const fd = new FormData(e.currentTarget);
         onSave({
           type, status,
+          refType: refType || null,
+          refId: refType ? (refId || null) : null,
           name: fd.get('name'),
           lat: node.lat, lng: node.lng,
           description: fd.get('description') || null,
@@ -333,8 +367,8 @@ function NodeModal({ node, onClose, onSave, onDelete, saving }: {
             </select>
           </div>
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Status</label>
-            <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <label className="text-xs text-slate-500 mb-1 block">Status manual</label>
+            <select className="input" value={status} onChange={(e) => setStatus(e.target.value)} disabled={!!refType}>
               <option value="up">🟢 Aktif</option>
               <option value="down">🔴 Mati / Putus</option>
             </select>
@@ -344,6 +378,31 @@ function NodeModal({ node, onClose, onSave, onDelete, saving }: {
           <label className="text-xs text-slate-500 mb-1 block">Nama</label>
           <input name="name" className="input" defaultValue={node.name} placeholder="mis. ODP-03 Gg. Melati" required />
         </div>
+
+        {/* Deteksi status OTOMATIS via tautan ke perangkat */}
+        {refKind && (
+          <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 space-y-2">
+            <label className="flex items-center gap-2 text-xs font-medium text-emerald-800">
+              <input type="checkbox" checked={!!refType}
+                onChange={(e) => { setRefType(e.target.checked ? refKind : ''); if (!e.target.checked) setRefId(''); }} />
+              Deteksi status otomatis dari perangkat
+            </label>
+            {refType && (
+              <select className="input" value={refId} onChange={(e) => setRefId(e.target.value)}>
+                <option value="">— Pilih perangkat —</option>
+                {refKind === 'olt' && olts.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                {refKind === 'router' && routers.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                {refKind === 'subscription' && customers.filter((c) => c.subscriptionId)
+                  .map((c) => <option key={c.subscriptionId!} value={c.subscriptionId!}>{c.fullName} ({c.customerNo})</option>)}
+              </select>
+            )}
+            <p className="text-xs text-emerald-700">
+              {refKind === 'olt' && 'Status ikut koneksi SNMP OLT (online/offline).'}
+              {refKind === 'router' && 'Status ikut koneksi Mikrotik.'}
+              {refKind === 'subscription' && 'Status ikut redaman ONU pelanggan (LOS = mati).'}
+            </p>
+          </div>
+        )}
         {isSplitter && (
           <div className="grid grid-cols-2 gap-3">
             <div>
