@@ -35,4 +35,12 @@ export class Device {
 
   @Column({ name: 'updated_at', type: 'timestamptz', nullable: true })
   updatedAt: Date;
+
+  /**
+   * Pembacaan "tak ada sinyal" berturut-turut. Dipakai meredam LOS palsu:
+   * OLT GPON kadang balas nilai sentinel bergantian. LOS baru diakui setelah
+   * beberapa kali beruntun. Reset ke 0 saat ada pembacaan sehat.
+   */
+  @Column({ name: 'los_strikes', type: 'int', default: 0 })
+  losStrikes: number;
 }

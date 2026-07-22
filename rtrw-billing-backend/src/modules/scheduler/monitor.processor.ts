@@ -49,6 +49,14 @@ export class MonitorProcessor extends WorkerHost {
       privKeyEnc: oltRow.snmpPrivEnc,
     };
 
+    // OLT GPON (C-Data) sering membalas nilai sentinel "tak ada data" bergantian
+    // walau ONU sehat. LOS baru diakui setelah gagal beruntun sekian kali (≈15 mnt).
+    const LOS_THRESHOLD = 3;
+
+    const who = () => (device.subscription?.customer?.fullName
+      ? `${device.serialNumber} (${device.subscription.customer.fullName})`
+      : device.serialNumber);
+
     try {
       const reading = await this.snmp.readOpticalPower(olt, device.oltIfIndex, device.onuId);
 
@@ -59,35 +67,45 @@ export class MonitorProcessor extends WorkerHost {
         return;
       }
 
-      const rx = reading.dBm == null ? null : reading.dBm.toFixed(2);
-      // LOS asli hanya bila OLT benar-benar melaporkan tak ada sinyal.
-      const newStatus = reading.dBm == null ? 'los' : reading.health === 'critical' ? 'los' : 'online';
       const prevStatus = device.lastStatus;
+      const isLosReading = reading.dBm == null || reading.health === 'critical';
 
-      await this.metrics.save(this.metrics.create({ deviceId: device.id, rxPower: rx }));
-      await this.devices.update(device.id, {
-        lastRxPower: rx,
-        lastStatus: newStatus,
-        updatedAt: new Date(),
-      });
-      this.gateway.emitOnuStatus({
-        deviceId: device.id,
-        dBm: reading.dBm,
-        health: reading.health,
-      });
+      if (!isLosReading) {
+        // ── Pembacaan SEHAT → reset strike, status online ──
+        const rx = reading.dBm!.toFixed(2);
+        await this.metrics.save(this.metrics.create({ deviceId: device.id, rxPower: rx }));
+        await this.devices.update(device.id, {
+          lastRxPower: rx, lastStatus: 'online', losStrikes: 0, updatedAt: new Date(),
+        });
+        this.gateway.emitOnuStatus({ deviceId: device.id, dBm: reading.dBm, health: reading.health });
 
-      // Notifikasi WA admin hanya saat status BERUBAH (bukan tiap poll).
-      if (prevStatus !== newStatus) {
-        const who = device.subscription?.customer?.fullName
-          ? `${device.serialNumber} (${device.subscription.customer.fullName})`
-          : device.serialNumber;
-        if (newStatus === 'los') {
-          await this.wa.notifyAdmin(
-            `🔴 ONU LOS: ${who}${rx ? ` — RX ${rx} dBm` : ' — tidak ada sinyal'}. Cek kabel/perangkat pelanggan.`,
-          );
-        } else if (prevStatus === 'los' || prevStatus === 'offline') {
-          await this.wa.notifyAdmin(`🟢 ONU pulih: ${who} — RX ${rx} dBm.`);
+        if (prevStatus === 'los' || prevStatus === 'offline') {
+          await this.wa.notifyAdmin(`🟢 ONU pulih: ${who()} — RX ${rx} dBm.`);
         }
+        return;
+      }
+
+      // ── Pembacaan LOS → hitung strike, tahan sampai ambang tercapai ──
+      const strikes = (device.losStrikes ?? 0) + 1;
+      await this.metrics.save(this.metrics.create({ deviceId: device.id, rxPower: null }));
+
+      if (strikes < LOS_THRESHOLD) {
+        // Belum yakin — naikkan strike, pertahankan status & nilai terakhir.
+        await this.devices.update(device.id, { losStrikes: strikes, updatedAt: new Date() });
+        this.logger.debug(`ONU ${device.id} pembacaan LOS ${strikes}/${LOS_THRESHOLD} — ditahan.`);
+        return;
+      }
+
+      // LOS terkonfirmasi (beruntun ≥ ambang).
+      await this.devices.update(device.id, {
+        lastRxPower: null, lastStatus: 'los', losStrikes: strikes, updatedAt: new Date(),
+      });
+      this.gateway.emitOnuStatus({ deviceId: device.id, dBm: null, health: 'critical' });
+
+      if (prevStatus !== 'los') {
+        await this.wa.notifyAdmin(
+          `🔴 ONU LOS: ${who()} — tidak ada sinyal (${strikes}x beruntun). Cek kabel/perangkat pelanggan.`,
+        );
       }
     } catch (err) {
       // Gagal total (mis. OLT unreachable) → jangan flip ke LOS/offline; biarkan
