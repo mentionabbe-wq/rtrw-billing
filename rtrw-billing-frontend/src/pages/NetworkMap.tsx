@@ -3,17 +3,61 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MapContainer, TileLayer, Marker, Polyline, Popup, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { MapPin, Cable, Plus, Trash2, X, Loader2, Save, Server, Box, Split, Radio } from 'lucide-react';
+import { MapPin, Cable, Trash2, X, Loader2, Save, Server, Box, Split, Radio } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCan } from '@/lib/rbac';
 
 interface Node {
   id: string; type: string; name: string; lat: string; lng: string;
-  description: string | null; capacityTotal: number | null; capacityUsed: number | null; color: string | null;
+  description: string | null; capacityTotal: number | null; capacityUsed: number | null;
+  color: string | null; status: string;
 }
 interface CableT {
   id: string; name: string; type: string; cores: number;
-  path: [number, number][]; color: string | null; description: string | null;
+  path: [number, number][]; color: string | null; description: string | null; status: string;
+}
+
+/** Kunci titik dibulatkan ~0.11m agar ujung yg di-snap dianggap sama. */
+const ptKey = (lat: number, lng: number) => `${lat.toFixed(6)},${lng.toFixed(6)}`;
+
+/**
+ * Telusuri konektivitas: mulai dari sumber (server/OLT yg up), lewati kabel &
+ * titik yang up. Kabel yang tercapai = "teraliri" (animasi). Kabel/titik down
+ * memutus aliran ke hilir. Kembalikan Set id kabel yang teraliri.
+ */
+function computeAlive(nodes: Node[], cables: CableT[]): Set<string> {
+  const downPoints = new Set<string>();
+  const sources: string[] = [];
+  for (const n of nodes) {
+    const k = ptKey(Number(n.lat), Number(n.lng));
+    if (n.status === 'down') downPoints.add(k);
+    else if (n.type === 'server' || n.type === 'olt') sources.push(k);
+  }
+
+  const adj = new Map<string, { id: string; other: string; up: boolean }[]>();
+  for (const c of cables) {
+    if (!c.path || c.path.length < 2) continue;
+    const a = ptKey(c.path[0][0], c.path[0][1]);
+    const b = ptKey(c.path[c.path.length - 1][0], c.path[c.path.length - 1][1]);
+    const up = c.status !== 'down';
+    (adj.get(a) ?? adj.set(a, []).get(a)!).push({ id: c.id, other: b, up });
+    (adj.get(b) ?? adj.set(b, []).get(b)!).push({ id: c.id, other: a, up });
+  }
+
+  const reachable = new Set<string>();
+  const alive = new Set<string>();
+  const queue = sources.filter((p) => !downPoints.has(p));
+  queue.forEach((p) => reachable.add(p));
+  while (queue.length) {
+    const p = queue.shift()!;
+    for (const e of adj.get(p) ?? []) {
+      if (!e.up) continue;                 // kabel putus → hilir mati
+      alive.add(e.id);                     // kabel ini teraliri dari sisi sumber
+      if (downPoints.has(e.other)) continue;
+      if (!reachable.has(e.other)) { reachable.add(e.other); queue.push(e.other); }
+    }
+  }
+  return alive;
 }
 
 const NODE_TYPES: Record<string, { label: string; color: string; icon: any }> = {
@@ -70,6 +114,28 @@ export default function NetworkMap() {
     return [-6.2, 106.816]; // default Jakarta; geser ke lokasi Anda lalu simpan node pertama
   }, [data]);
 
+  // Kabel yang teraliri (untuk animasi) — dihitung ulang tiap data berubah.
+  const alive = useMemo(() => computeAlive(data?.nodes ?? [], data?.cables ?? []), [data]);
+
+  /** Tempelkan klik ke titik/ujung kabel terdekat (~20m) supaya tersambung. */
+  function snap(lat: number, lng: number): [number, number] {
+    const thr = 0.0002; // ~22m
+    let best: [number, number] | null = null;
+    let bestD = thr;
+    for (const n of data?.nodes ?? []) {
+      const d = Math.hypot(Number(n.lat) - lat, Number(n.lng) - lng);
+      if (d < bestD) { bestD = d; best = [Number(n.lat), Number(n.lng)]; }
+    }
+    for (const c of data?.cables ?? []) {
+      for (const end of [c.path[0], c.path[c.path.length - 1]]) {
+        if (!end) continue;
+        const d = Math.hypot(end[0] - lat, end[1] - lng);
+        if (d < bestD) { bestD = d; best = [end[0], end[1]]; }
+      }
+    }
+    return best ?? [Number(lat.toFixed(7)), Number(lng.toFixed(7))];
+  }
+
   const saveNode = useMutation({
     mutationFn: ({ id, body }: { id?: string; body: any }) =>
       id ? api.patch(`/map/nodes/${id}`, body) : api.post('/map/nodes', body),
@@ -93,10 +159,11 @@ export default function NetworkMap() {
 
   function onMapClick(lat: number, lng: number) {
     if (mode === 'add-node') {
-      setNodeForm({ type: 'odp', name: '', lat: lat.toFixed(7), lng: lng.toFixed(7) });
+      const [sl, sn] = snap(lat, lng);
+      setNodeForm({ type: 'odp', name: '', lat: String(sl), lng: String(sn) });
       setMode(null);
     } else if (mode === 'draw-cable') {
-      setDraft((d) => [...d, [Number(lat.toFixed(7)), Number(lng.toFixed(7))]]);
+      setDraft((d) => [...d, snap(lat, lng)]);
     }
   }
 
@@ -149,6 +216,8 @@ export default function NetworkMap() {
             <span className="inline-block w-5 h-1 rounded" style={{ background: v.color }} /> {v.label}
           </span>
         ))}
+        <span className="w-px bg-slate-200 mx-1" />
+        <span className="text-slate-400">Garis bergerak = teraliri · abu-abu = putus/tak tersambung</span>
       </div>
 
       <div className="card overflow-hidden" style={{ height: '70vh' }}>
@@ -162,13 +231,25 @@ export default function NetworkMap() {
           {/* Kabel tersimpan */}
           {data?.cables.map((c) => {
             const t = CABLE_TYPES[c.type] ?? CABLE_TYPES.distribution;
+            const isAlive = c.status !== 'down' && alive.has(c.id);
             return (
-              <Polyline key={c.id} positions={c.path} pathOptions={{ color: c.color || t.color, weight: t.weight }}
-                eventHandlers={{ click: () => canEdit && setCableForm(c) }}>
+              <Polyline
+                key={`${c.id}-${isAlive}`}
+                positions={c.path}
+                pathOptions={{
+                  color: isAlive ? (c.color || t.color) : '#94a3b8',
+                  weight: t.weight,
+                  opacity: isAlive ? 1 : 0.55,
+                  className: isAlive ? 'fiber-flow' : '',
+                  dashArray: c.status === 'down' ? '4 8' : undefined,
+                }}
+                eventHandlers={{ click: () => canEdit && setCableForm(c) }}
+              >
                 <Popup>
                   <b>{c.name}</b><br />
                   {t.label} · {c.cores} core<br />
-                  {c.description}
+                  Status: {isAlive ? '🟢 teraliri' : c.status === 'down' ? '🔴 putus' : '⚪ tidak tersambung ke sumber'}
+                  {c.description && <><br />{c.description}</>}
                 </Popup>
               </Polyline>
             );
@@ -181,10 +262,11 @@ export default function NetworkMap() {
 
           {/* Titik */}
           {data?.nodes.map((n) => (
-            <Marker key={n.id} position={[Number(n.lat), Number(n.lng)]} icon={nodeIcon(n.type, n.color)}
+            <Marker key={`${n.id}-${n.status}`} position={[Number(n.lat), Number(n.lng)]}
+              icon={nodeIcon(n.type, n.status === 'down' ? '#94a3b8' : n.color)}
               eventHandlers={{ click: () => canEdit && setNodeForm(n) }}>
               <Popup>
-                <b>{n.name}</b><br />
+                <b>{n.name}</b> {n.status === 'down' && '🔴'}<br />
                 {NODE_TYPES[n.type]?.label ?? n.type}
                 {n.capacityTotal != null && <><br />Port: {n.capacityUsed ?? 0}/{n.capacityTotal}</>}
                 {n.description && <><br />{n.description}</>}
@@ -227,6 +309,7 @@ function NodeModal({ node, onClose, onSave, onDelete, saving }: {
   node: Partial<Node>; onClose: () => void; onSave: (b: any) => void; onDelete?: () => void; saving: boolean;
 }) {
   const [type, setType] = useState(node.type ?? 'odp');
+  const [status, setStatus] = useState(node.status ?? 'up');
   const isSplitter = type === 'odp' || type === 'odc';
   return (
     <Modal title={node.id ? 'Edit Titik' : 'Tambah Titik'} onClose={onClose} onDelete={onDelete}>
@@ -234,7 +317,7 @@ function NodeModal({ node, onClose, onSave, onDelete, saving }: {
         e.preventDefault();
         const fd = new FormData(e.currentTarget);
         onSave({
-          type,
+          type, status,
           name: fd.get('name'),
           lat: node.lat, lng: node.lng,
           description: fd.get('description') || null,
@@ -242,11 +325,20 @@ function NodeModal({ node, onClose, onSave, onDelete, saving }: {
           capacityUsed: fd.get('capacityUsed') ? Number(fd.get('capacityUsed')) : null,
         });
       }} className="space-y-3">
-        <div>
-          <label className="text-xs text-slate-500 mb-1 block">Jenis</label>
-          <select className="input" value={type} onChange={(e) => setType(e.target.value)}>
-            {Object.entries(NODE_TYPES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-          </select>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Jenis</label>
+            <select className="input" value={type} onChange={(e) => setType(e.target.value)}>
+              {Object.entries(NODE_TYPES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Status</label>
+            <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="up">🟢 Aktif</option>
+              <option value="down">🔴 Mati / Putus</option>
+            </select>
+          </div>
         </div>
         <div>
           <label className="text-xs text-slate-500 mb-1 block">Nama</label>
@@ -289,6 +381,7 @@ function CableModal({ cable, onClose, onSave, onDelete, saving }: {
           name: fd.get('name'),
           type: fd.get('type'),
           cores: Number(fd.get('cores')) || 12,
+          status: fd.get('status'),
           description: fd.get('description') || null,
         });
       }} className="space-y-3">
@@ -296,7 +389,7 @@ function CableModal({ cable, onClose, onSave, onDelete, saving }: {
           <label className="text-xs text-slate-500 mb-1 block">Nama</label>
           <input name="name" className="input" defaultValue={cable.name} placeholder="mis. Backbone OLT → ODC-1" required />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <div>
             <label className="text-xs text-slate-500 mb-1 block">Jenis</label>
             <select name="type" className="input" defaultValue={cable.type ?? 'distribution'}>
@@ -304,8 +397,15 @@ function CableModal({ cable, onClose, onSave, onDelete, saving }: {
             </select>
           </div>
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Jumlah core</label>
+            <label className="text-xs text-slate-500 mb-1 block">Core</label>
             <input name="cores" type="number" className="input" defaultValue={cable.cores ?? 12} />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Status</label>
+            <select name="status" className="input" defaultValue={cable.status ?? 'up'}>
+              <option value="up">🟢 Aktif</option>
+              <option value="down">🔴 Putus</option>
+            </select>
           </div>
         </div>
         <div>

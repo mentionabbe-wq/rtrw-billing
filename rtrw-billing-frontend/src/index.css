@@ -31,3 +31,12 @@
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
   }
 }
+
+/* Animasi aliran fiber di peta jaringan (kabel aktif) */
+.fiber-flow {
+  stroke-dasharray: 10 8;
+  animation: fiber-dash 0.9s linear infinite;
+}
+@keyframes fiber-dash {
+  to { stroke-dashoffset: -18; }
+}

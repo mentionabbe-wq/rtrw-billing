@@ -27,6 +27,10 @@ export class MapCable {
   @Column({ nullable: true })
   color: string | null;
 
+  /** up | down — kabel putus/mati menghentikan aliran ke hilir. */
+  @Column({ default: 'up' })
+  status: string;
+
   @Column({ type: 'text', nullable: true })
   description: string | null;
 

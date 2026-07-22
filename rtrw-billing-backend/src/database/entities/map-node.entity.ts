@@ -37,6 +37,10 @@ export class MapNode {
   @Column({ nullable: true })
   color: string | null;
 
+  /** up | down — bila down, memutus aliran ke titik & kabel di bawahnya. */
+  @Column({ default: 'up' })
+  status: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

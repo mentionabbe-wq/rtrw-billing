@@ -36,6 +36,7 @@ export class MapService {
       capacityTotal: dto.capacityTotal ?? null,
       capacityUsed: dto.capacityUsed ?? null,
       color: dto.color ?? null,
+      status: dto.status ?? 'up',
     }));
   }
 
@@ -51,6 +52,7 @@ export class MapService {
       ...(dto.capacityTotal !== undefined && { capacityTotal: dto.capacityTotal }),
       ...(dto.capacityUsed !== undefined && { capacityUsed: dto.capacityUsed }),
       ...(dto.color !== undefined && { color: dto.color || null }),
+      ...(dto.status !== undefined && { status: dto.status }),
     });
     return this.nodes.save(n);
   }
@@ -68,6 +70,7 @@ export class MapService {
       cores: dto.cores ?? 12,
       path: dto.path ?? [],
       color: dto.color ?? null,
+      status: dto.status ?? 'up',
       description: dto.description ?? null,
     }));
   }
@@ -81,6 +84,7 @@ export class MapService {
       ...(dto.cores !== undefined && { cores: dto.cores }),
       ...(dto.path !== undefined && { path: dto.path }),
       ...(dto.color !== undefined && { color: dto.color || null }),
+      ...(dto.status !== undefined && { status: dto.status }),
       ...(dto.description !== undefined && { description: dto.description || null }),
     });
     return this.cables.save(c);
