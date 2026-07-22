@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Users, Package, Receipt, Activity, LogOut, Menu, X, Wifi,
-  Settings as SettingsIcon, ScrollText, UserCog, ShieldCheck, Ticket, Wallet,
+  Settings as SettingsIcon, ScrollText, UserCog, ShieldCheck, Ticket, Wallet, Map as MapIcon,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuth } from '@/store/auth';
@@ -24,6 +24,7 @@ const nav: { to: string; label: string; icon: any; end?: boolean; cap?: Capabili
   { to: '/invoices', label: 'Tagihan', icon: Receipt },
   { to: '/finance', label: 'Laporan Keuangan', icon: Wallet, cap: 'billing.write' },
   { to: '/monitoring', label: 'Monitoring ONU', icon: Activity },
+  { to: '/map', label: 'Peta Jaringan', icon: MapIcon },
   { to: '/hotspot', label: 'Hotspot Voucher', icon: Ticket },
   { to: '/settings', label: 'Pengaturan', icon: SettingsIcon, cap: 'settings.manage' },
   { to: '/users', label: 'Pengguna', icon: UserCog, cap: 'users.manage' },

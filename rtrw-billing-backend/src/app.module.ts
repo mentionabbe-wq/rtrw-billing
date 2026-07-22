@@ -29,6 +29,7 @@ import { HotspotModule } from '@modules/hotspot/hotspot.module';
 import { PaymentWebhookModule } from '@modules/billing/payment-webhook.module';
 import { IntegrationsModule } from '@modules/integrations/integrations.module';
 import { BackupModule } from '@modules/backup/backup.module';
+import { MapModule } from '@modules/map/map.module';
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { BackupModule } from '@modules/backup/backup.module';
     HotspotModule,
     PaymentWebhookModule,
     BackupModule,
+    MapModule,
   ],
 })
 export class AppModule {}

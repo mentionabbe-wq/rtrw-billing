@@ -16,6 +16,7 @@ import Users from '@/pages/Users';
 import Security from '@/pages/Security';
 import Portal from '@/pages/Portal';
 import Hotspot from '@/pages/Hotspot';
+import NetworkMap from '@/pages/NetworkMap';
 import VoucherStore from '@/pages/VoucherStore';
 import CustomerPortal from '@/pages/CustomerPortal';
 import Finance from '@/pages/Finance';
@@ -48,6 +49,7 @@ export default function App() {
         <Route path="/invoices" element={<Invoices />} />
         <Route path="/finance" element={<RequireCap cap="billing.write"><Finance /></RequireCap>} />
         <Route path="/monitoring" element={<Monitoring />} />
+        <Route path="/map" element={<NetworkMap />} />
         {/* /genieacs digabung ke /monitoring — redirect utk link lama */}
         <Route path="/genieacs" element={<Navigate to="/monitoring" replace />} />
         <Route path="/settings" element={<RequireCap cap="settings.manage"><Settings /></RequireCap>} />

@@ -14,6 +14,8 @@ export { PortalSetting } from './portal-setting.entity';
 export { HotspotPackage } from './hotspot-package.entity';
 export { HotspotVoucher } from './hotspot-voucher.entity';
 export { IntegrationSetting } from './integration-setting.entity';
+export { MapNode } from './map-node.entity';
+export { MapCable } from './map-cable.entity';
 
 import { User } from './user.entity';
 import { ServicePackage } from './service-package.entity';
@@ -31,9 +33,11 @@ import { PortalSetting } from './portal-setting.entity';
 import { HotspotPackage } from './hotspot-package.entity';
 import { HotspotVoucher } from './hotspot-voucher.entity';
 import { IntegrationSetting } from './integration-setting.entity';
+import { MapNode } from './map-node.entity';
+import { MapCable } from './map-cable.entity';
 
 export const ALL_ENTITIES = [
   User, ServicePackage, Router, Customer, Subscription,
   Device, Invoice, Payment, MikrotikSyncLog, DeviceMetric, Olt, AuditLog, PortalSetting,
-  HotspotPackage, HotspotVoucher, IntegrationSetting,
+  HotspotPackage, HotspotVoucher, IntegrationSetting, MapNode, MapCable,
 ];
