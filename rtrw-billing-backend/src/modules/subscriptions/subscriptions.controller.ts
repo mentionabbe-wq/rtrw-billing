@@ -39,6 +39,12 @@ export class SubscriptionsController {
     return this.service.changePackage(id, packageId);
   }
 
+  @Patch(':id/pppoe')
+  @Roles('admin', 'operator')
+  editPppoe(@Param('id') id: string, @Body() body: { pppoeUser?: string; pppoePass?: string }) {
+    return this.service.editPppoe(id, body);
+  }
+
   @Post(':id/suspend')
   @Roles('admin', 'operator')
   suspend(@Param('id') id: string) {

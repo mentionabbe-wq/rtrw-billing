@@ -379,6 +379,46 @@ export class MikrotikService {
     }
   }
 
+  /**
+   * Ganti nama (dan opsional password) PPP secret di Mikrotik. Bila secret lama
+   * ada → di-rename; bila tak ada → buat baru dgn nama baru. Sesi aktif user lama
+   * diputus agar CPE dial ulang dgn kredensial baru.
+   */
+  async renamePppSecret(
+    router: Router, oldName: string, newName: string, password?: string, profile?: string,
+  ): Promise<void> {
+    const conn = await this.connect(router);
+    try {
+      const existing = await conn.write('/ppp/secret/print', [`?name=${oldName}`]);
+      if (existing.length) {
+        await conn.write('/ppp/secret/set', [
+          `=.id=${existing[0]['.id']}`,
+          `=name=${newName}`,
+          '=disabled=no',
+          ...(password ? [`=password=${password}`] : []),
+          ...(profile ? [`=profile=${profile}`] : []),
+        ]);
+      } else {
+        await conn.write('/ppp/secret/add', [
+          `=name=${newName}`,
+          `=password=${password ?? newName}`,
+          `=service=pppoe`,
+          ...(profile ? [`=profile=${profile}`] : []),
+          `=comment=created-via-billing`,
+        ]);
+      }
+      // Putus sesi aktif nama lama (kalau ada) supaya dial ulang.
+      const active = await conn.write('/ppp/active/print', [`?name=${oldName}`]);
+      for (const a of active) {
+        await conn.write('/ppp/active/remove', [`=.id=${a['.id']}`]).catch(() => {});
+      }
+    } catch (e: any) {
+      throw new Error(`Mikrotik [${router.name}]: ${e?.message ?? String(e)}`);
+    } finally {
+      conn.close();
+    }
+  }
+
   // ─── Hotspot user management ─────────────────────────────────────────────────
 
   /**

@@ -31,6 +31,8 @@ interface CustomerDetail {
   phone: string;
   nik: string;
   address: string;
+  subscriptionId?: string | null;
+  pppoeUser?: string | null;
 }
 
 interface Pkg { id: string; name: string; rateLimit: string }
@@ -118,9 +120,14 @@ export default function Customers() {
     onError: () => alert('Gagal mengirim perintah ke Mikrotik.'),
   });
 
-  async function openEdit(id: string) {
-    const { data } = await api.get<CustomerDetail>(`/customers/${id}`);
-    setEditing(data);
+  const editPppoe = useMutation({
+    mutationFn: ({ subId, body }: { subId: string; body: any }) =>
+      api.patch(`/subscriptions/${subId}/pppoe`, body),
+  });
+
+  async function openEdit(c: Customer) {
+    const { data } = await api.get<CustomerDetail>(`/customers/${c.id}`);
+    setEditing({ ...data, subscriptionId: c.subscriptionId, pppoeUser: c.pppoeUser });
   }
 
   return (
@@ -229,7 +236,7 @@ export default function Customers() {
                         <Receipt size={16} />
                       </button>
                       {canWrite && (
-                        <button className="btn-ghost" onClick={() => openEdit(c.id)} title="Edit data pelanggan">
+                        <button className="btn-ghost" onClick={() => openEdit(c)} title="Edit data pelanggan">
                           <Pencil size={16} />
                         </button>
                       )}
@@ -277,6 +284,7 @@ export default function Customers() {
             <form onSubmit={(e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
+              // 1) Simpan data pelanggan
               updateMut.mutate({
                 id: editing.id,
                 body: {
@@ -287,6 +295,18 @@ export default function Customers() {
                   status: fd.get('status'),
                 },
               });
+              // 2) Bila user/password PPPoE diubah → terapkan ke langganan + Mikrotik
+              const newUser = String(fd.get('pppoeUser') || '').trim();
+              const newPass = String(fd.get('pppoePass') || '').trim();
+              if (editing.subscriptionId && (newUser !== (editing.pppoeUser ?? '') || newPass)) {
+                editPppoe.mutate(
+                  { subId: editing.subscriptionId, body: { pppoeUser: newUser || undefined, pppoePass: newPass || undefined } },
+                  {
+                    onError: (err: any) => alert(`PPPoE gagal: ${err?.response?.data?.message ?? err.message}`),
+                    onSuccess: () => alert('User PPPoE diperbarui & diterapkan ke Mikrotik ✓'),
+                  },
+                );
+              }
             }} className="space-y-3">
               <input name="fullName" className="input" placeholder="Nama lengkap" defaultValue={editing.fullName} required />
               <input name="phone" className="input" placeholder="No. HP" defaultValue={editing.phone} required />
@@ -297,8 +317,18 @@ export default function Customers() {
                 <option value="suspended">suspended</option>
                 <option value="terminated">terminated</option>
               </select>
-              <button className="btn-primary w-full" disabled={updateMut.isPending}>
-                {updateMut.isPending && <Loader2 className="animate-spin" size={16} />} Simpan
+
+              {editing.subscriptionId && (
+                <div className="rounded-lg border border-slate-200 p-3 space-y-2">
+                  <p className="text-xs font-medium text-slate-500">Akun PPPoE (langsung diterapkan ke Mikrotik)</p>
+                  <input name="pppoeUser" className="input font-mono" placeholder="User PPPoE" defaultValue={editing.pppoeUser ?? ''} />
+                  <input name="pppoePass" className="input font-mono" placeholder="Password baru (kosongkan = tetap)" />
+                  <p className="text-xs text-slate-400">Mengubah user tetap pada langganan yang sama, jadi data monitoring & tagihan tidak putus.</p>
+                </div>
+              )}
+
+              <button className="btn-primary w-full" disabled={updateMut.isPending || editPppoe.isPending}>
+                {(updateMut.isPending || editPppoe.isPending) && <Loader2 className="animate-spin" size={16} />} Simpan
               </button>
             </form>
           </div>

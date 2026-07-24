@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Wifi, Power, Loader2, Radar, Users2, Plus, RefreshCw, Router as RouterIcon,
-  RotateCw, X,
+  RotateCw, X, Trash2,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCan } from '@/lib/rbac';
@@ -85,6 +85,11 @@ function GenieacsPanel() {
       alert(v.op === 'reboot' ? 'Perintah reboot dikirim ke ONU.' : 'Refresh diminta — data diperbarui saat ONU inform.');
     },
     onError: (e: any) => alert(`Gagal: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
+  });
+  const del = useMutation({
+    mutationFn: (id: string) => api.delete(`/genieacs/devices/${encodeURIComponent(id)}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['genieacs-devices'] }),
+    onError: (e: any) => alert(`Gagal hapus: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
   });
 
   return (
@@ -170,6 +175,10 @@ function GenieacsPanel() {
                         <button className="btn-ghost text-rose-600" title="Reboot ONU" disabled={act.isPending}
                           onClick={() => { if (confirm(`Reboot ONU ${d.serial ?? d.id}?`)) act.mutate({ id: d.id, op: 'reboot' }); }}>
                           <Power size={15} />
+                        </button>
+                        <button className="btn-ghost text-slate-400 hover:text-rose-600" title="Hapus dari GenieACS" disabled={del.isPending}
+                          onClick={() => { if (confirm(`Hapus ONU ${d.serial ?? d.id} dari GenieACS? (data TR-069 dihapus; ONU akan muncul lagi bila masih inform)`)) del.mutate(d.id); }}>
+                          <Trash2 size={15} />
                         </button>
                       </div>
                     </td>

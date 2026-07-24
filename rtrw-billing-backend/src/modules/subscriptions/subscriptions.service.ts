@@ -144,4 +144,45 @@ export class SubscriptionsService {
     await this.queue.add(action, { subscriptionId: sub.id }, DEFAULT_JOB_OPTS);
     return { id: sub.id, action, queued: true };
   }
+
+  /**
+   * Ubah user/password PPPoE pada langganan yang SAMA (bukan hapus-buat baru),
+   * agar kaitan perangkat monitoring & data tetap utuh. Rename secret di Mikrotik.
+   */
+  async editPppoe(id: string, dto: { pppoeUser?: string; pppoePass?: string }) {
+    const sub = await this.subs.findOne({
+      where: { id },
+      relations: { router: true, package: true },
+    });
+    if (!sub) throw new NotFoundException('Subscription not found');
+
+    const oldUser = sub.pppoeUser;
+    const newUser = dto.pppoeUser?.trim() || oldUser;
+
+    if (newUser !== oldUser) {
+      const dup = await this.subs.createQueryBuilder('s')
+        .where('LOWER(s.pppoeUser) = LOWER(:u)', { u: newUser })
+        .andWhere('s.id != :id', { id })
+        .getOne();
+      if (dup) throw new BadRequestException(`User PPPoE "${newUser}" sudah dipakai pelanggan lain.`);
+    }
+
+    const password = dto.pppoePass?.trim() || undefined;
+
+    // Terapkan ke Mikrotik (rename secret + putus sesi lama).
+    if (sub.router && (newUser !== oldUser || password)) {
+      try {
+        await this.mikrotik.renamePppSecret(
+          sub.router, oldUser, newUser, password, sub.package?.pppoeProfile ?? undefined,
+        );
+      } catch (e: any) {
+        throw new BadRequestException(`Gagal terapkan ke Mikrotik: ${e?.message ?? e}`);
+      }
+    }
+
+    sub.pppoeUser = newUser;
+    if (password) sub.pppoePassEnc = this.crypto.encrypt(password);
+    await this.subs.save(sub);
+    return { id: sub.id, pppoeUser: newUser };
+  }
 }

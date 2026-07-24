@@ -163,6 +163,12 @@ export default function NetworkMap() {
     mutationFn: (id: string) => api.delete(`/map/nodes/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['map'] }); setNodeForm(null); },
   });
+  const moveNode = useMutation({
+    mutationFn: ({ id, lat, lng }: { id: string; lat: number; lng: number }) =>
+      api.patch(`/map/nodes/${id}/move`, { lat, lng }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['map'] }),
+    onError: () => { alert('Gagal memindah titik.'); qc.invalidateQueries({ queryKey: ['map'] }); },
+  });
   const saveCable = useMutation({
     mutationFn: ({ id, body }: { id?: string; body: any }) =>
       id ? api.patch(`/map/cables/${id}`, body) : api.post('/map/cables', body),
@@ -283,7 +289,14 @@ export default function NetworkMap() {
             return (
               <Marker key={`${n.id}-${eff(n)}`} position={[Number(n.lat), Number(n.lng)]}
                 icon={nodeIcon(n.type, down ? '#94a3b8' : n.color)}
-                eventHandlers={{ click: () => canEdit && setNodeForm(n) }}>
+                draggable={canEdit}
+                eventHandlers={{
+                  click: () => canEdit && setNodeForm(n),
+                  dragend: (e) => {
+                    const ll = (e.target as any).getLatLng();
+                    moveNode.mutate({ id: n.id, lat: Number(ll.lat.toFixed(7)), lng: Number(ll.lng.toFixed(7)) });
+                  },
+                }}>
                 <Popup>
                   <b>{n.name}</b> {down ? '🔴' : '🟢'}<br />
                   {NODE_TYPES[n.type]?.label ?? n.type}
@@ -338,6 +351,8 @@ function NodeModal({ node, olts, routers, customers, onClose, onSave, onDelete, 
   const [status, setStatus] = useState(node.status ?? 'up');
   const [refType, setRefType] = useState(node.refType ?? '');
   const [refId, setRefId] = useState(node.refId ?? '');
+  const [autoConnect, setAutoConnect] = useState(true);
+  const isNew = !node.id;
   const isSplitter = type === 'odp' || type === 'odc';
 
   // Saran tautan sesuai jenis: OLT→olt, Server→router, ONU→langganan pelanggan.
@@ -357,6 +372,7 @@ function NodeModal({ node, olts, routers, customers, onClose, onSave, onDelete, 
           description: fd.get('description') || null,
           capacityTotal: fd.get('capacityTotal') ? Number(fd.get('capacityTotal')) : null,
           capacityUsed: fd.get('capacityUsed') ? Number(fd.get('capacityUsed')) : null,
+          ...(isNew && { autoConnect }),
         });
       }} className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
@@ -420,6 +436,14 @@ function NodeModal({ node, olts, routers, customers, onClose, onSave, onDelete, 
           <textarea name="description" className="input" rows={2} defaultValue={node.description ?? ''} placeholder="mis. splitter 1:8, di tiang PLN depan warung" />
         </div>
         <p className="text-xs text-slate-400">Koordinat: {Number(node.lat).toFixed(6)}, {Number(node.lng).toFixed(6)}</p>
+        {isNew ? (
+          <label className="flex items-center gap-2 text-sm text-slate-700 rounded-lg bg-slate-50 border border-slate-200 p-2.5">
+            <input type="checkbox" checked={autoConnect} onChange={(e) => setAutoConnect(e.target.checked)} />
+            Sambungkan otomatis dengan kabel ke titik terdekat
+          </label>
+        ) : (
+          <p className="text-xs text-slate-400">💡 Tutup dialog lalu <b>seret marker</b> di peta untuk memindahkan — kabel yang menempel ikut bergeser.</p>
+        )}
         <button className="btn-primary w-full" disabled={saving}>
           {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Simpan
         </button>

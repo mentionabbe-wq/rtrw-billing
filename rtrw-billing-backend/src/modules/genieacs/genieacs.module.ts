@@ -1,5 +1,5 @@
 import {
-  BadRequestException, Body, Controller, Get, Injectable, Logger, Module,
+  BadRequestException, Body, Controller, Delete, Get, Injectable, Logger, Module,
   Param, Post, UseGuards,
 } from '@nestjs/common';
 import { TypeOrmModule, InjectRepository } from '@nestjs/typeorm';
@@ -181,6 +181,16 @@ export class GenieacsService {
     return { id, refreshed: true };
   }
 
+  /** Hapus device dari GenieACS (NBI). Berguna utk ONU lama/duplikat. */
+  async deleteDevice(id: string) {
+    const { base, headers } = await this.client();
+    const res = await fetch(`${base}/devices/${encodeURIComponent(id)}`, { method: 'DELETE', headers });
+    if (!res.ok && res.status !== 200 && res.status !== 404) {
+      throw new BadRequestException(`GenieACS gagal hapus (${res.status})`);
+    }
+    return { id, deleted: true };
+  }
+
   // ---- internal ----
   private async fetchOne(id: string): Promise<any> {
     const { base, headers } = await this.client();
@@ -271,6 +281,10 @@ export class GenieacsController {
   @Post('devices/:id/refresh')
   @Roles('admin', 'operator')
   refresh(@Param('id') id: string) { return this.service.refresh(id); }
+
+  @Delete('devices/:id')
+  @Roles('admin', 'operator')
+  remove(@Param('id') id: string) { return this.service.deleteDevice(id); }
 }
 
 @Module({

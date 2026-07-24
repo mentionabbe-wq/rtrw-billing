@@ -59,9 +59,13 @@ export class MapService {
     };
   }
 
+  private ptKey(lat: number, lng: number) {
+    return `${lat.toFixed(6)},${lng.toFixed(6)}`;
+  }
+
   // ── Nodes ──
-  createNode(dto: Partial<MapNode>) {
-    return this.nodes.save(this.nodes.create({
+  async createNode(dto: Partial<MapNode> & { autoConnect?: boolean }) {
+    const node = await this.nodes.save(this.nodes.create({
       type: dto.type ?? 'odp',
       name: dto.name ?? 'Titik baru',
       lat: dto.lat,
@@ -74,6 +78,50 @@ export class MapService {
       refType: dto.refType ?? null,
       refId: dto.refId ?? null,
     }));
+
+    // Auto-connect: gambar kabel lurus ke titik terdekat (dalam ~1.1 km).
+    if (dto.autoConnect) {
+      const others = (await this.nodes.find()).filter((o) => o.id !== node.id);
+      const nlat = Number(node.lat);
+      const nlng = Number(node.lng);
+      let best: MapNode | null = null;
+      let bestD = Infinity;
+      for (const o of others) {
+        const d = Math.hypot(Number(o.lat) - nlat, Number(o.lng) - nlng);
+        if (d < bestD) { bestD = d; best = o; }
+      }
+      if (best && bestD <= 0.01) {
+        await this.cables.save(this.cables.create({
+          name: `${best.name} → ${node.name}`,
+          type: node.type === 'onu' ? 'drop' : 'distribution',
+          cores: node.type === 'onu' ? 1 : 12,
+          path: [[Number(best.lat), Number(best.lng)], [nlat, nlng]],
+          status: 'up',
+        }));
+      }
+    }
+    return node;
+  }
+
+  /** Geser titik + ikutkan ujung kabel yang menempel padanya. */
+  async moveNode(id: string, lat: number, lng: number) {
+    const n = await this.nodes.findOne({ where: { id } });
+    if (!n) throw new NotFoundException('Node not found');
+    const oldKey = this.ptKey(Number(n.lat), Number(n.lng));
+    n.lat = String(lat);
+    n.lng = String(lng);
+    await this.nodes.save(n);
+
+    const cables = await this.cables.find();
+    for (const c of cables) {
+      let changed = false;
+      c.path = (c.path ?? []).map(([la, ln]) => {
+        if (this.ptKey(la, ln) === oldKey) { changed = true; return [lat, lng] as [number, number]; }
+        return [la, ln] as [number, number];
+      });
+      if (changed) await this.cables.save(c);
+    }
+    return { ok: true };
   }
 
   async updateNode(id: string, dto: Partial<MapNode>) {
@@ -145,6 +193,7 @@ export class MapController {
 
   @Post('nodes') @Roles('admin', 'operator') createNode(@Body() dto: any) { return this.svc.createNode(dto); }
   @Patch('nodes/:id') @Roles('admin', 'operator') updateNode(@Param('id') id: string, @Body() dto: any) { return this.svc.updateNode(id, dto); }
+  @Patch('nodes/:id/move') @Roles('admin', 'operator') moveNode(@Param('id') id: string, @Body() b: { lat: number; lng: number }) { return this.svc.moveNode(id, b.lat, b.lng); }
   @Delete('nodes/:id') @Roles('admin', 'operator') removeNode(@Param('id') id: string) { return this.svc.removeNode(id); }
 
   @Post('cables') @Roles('admin', 'operator') createCable(@Body() dto: any) { return this.svc.createCable(dto); }
