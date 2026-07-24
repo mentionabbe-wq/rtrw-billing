@@ -99,6 +99,18 @@ function GenieacsPanel() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['genieacs-devices'] }),
     onError: (e: any) => alert(`Gagal hapus: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
   });
+  // Daftar pelanggan utk mengaitkan device OLT yang belum terkait.
+  const { data: subs } = useQuery<{ fullName: string; customerNo: string; subscriptionId: string | null }[]>({
+    queryKey: ['customers'],
+    queryFn: async () => (await api.get('/customers')).data,
+    enabled: canControl,
+  });
+  const assign = useMutation({
+    mutationFn: ({ deviceId, subscriptionId }: { deviceId: string; subscriptionId: string }) =>
+      api.post(`/monitoring/devices/${deviceId}/assign`, { subscriptionId }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['genieacs-devices'] }),
+    onError: (e: any) => alert(`Gagal mengaitkan: ${e?.response?.data?.message ?? e?.message}`),
+  });
 
   return (
     <div className="card p-5">
@@ -150,7 +162,20 @@ function GenieacsPanel() {
                     <div className="text-xs text-slate-400">{[d.manufacturer, d.model ?? d.software].filter(Boolean).join(' ')}</div>
                   </td>
                   <td className="px-3 py-2">
-                    {d.customerName
+                    {/* Baris OLT belum terkait → dropdown kaitkan pelanggan (agar merge dgn TR-069). */}
+                    {canControl && d.source === 'olt' && d.deviceId ? (
+                      <select className="input text-xs py-1 min-w-[9rem]"
+                        defaultValue=""
+                        disabled={assign.isPending}
+                        onChange={(e) => e.target.value && assign.mutate({ deviceId: d.deviceId!, subscriptionId: e.target.value })}>
+                        <option value="">{d.customerName ?? '— kaitkan pelanggan —'}</option>
+                        {subs?.filter((s) => s.subscriptionId).map((s) => (
+                          <option key={s.subscriptionId!} value={s.subscriptionId!}>
+                            {s.fullName} ({s.customerNo})
+                          </option>
+                        ))}
+                      </select>
+                    ) : d.customerName
                       ? <span className="text-slate-700">{d.customerName}</span>
                       : <span className="text-xs text-slate-400">— tak terdeteksi —</span>}
                     {d.pppoeUser && <div className="text-xs text-slate-400 font-mono">{d.pppoeUser}</div>}
