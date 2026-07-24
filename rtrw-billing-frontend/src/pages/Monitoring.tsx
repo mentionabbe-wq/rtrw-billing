@@ -162,8 +162,8 @@ function GenieacsPanel() {
                     <div className="text-xs text-slate-400">{[d.manufacturer, d.model ?? d.software].filter(Boolean).join(' ')}</div>
                   </td>
                   <td className="px-3 py-2">
-                    {/* Baris OLT belum terkait → dropdown kaitkan pelanggan (agar merge dgn TR-069). */}
-                    {canControl && d.source === 'olt' && d.deviceId ? (
+                    {/* Baris OLT yg pelanggannya BELUM terdeteksi → dropdown kaitkan manual (fallback). */}
+                    {canControl && d.source === 'olt' && d.deviceId && !d.customerName ? (
                       <select className="input text-xs py-1 min-w-[9rem]"
                         defaultValue=""
                         disabled={assign.isPending}

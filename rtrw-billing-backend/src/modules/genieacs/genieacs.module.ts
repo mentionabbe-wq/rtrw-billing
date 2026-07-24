@@ -73,9 +73,39 @@ export class GenieacsService {
       where: { type: 'onu' },
       relations: { subscription: true },
     });
+
+    // Resolusi pelanggan OTOMATIS: gunakan tautan langganan bila ada; jika tidak,
+    // cocokkan NAMA ONU (serialNumber, mis. "gpon 0/0/1 onu 1 Pak Wawan") dengan
+    // nama pelanggan / user PPPoE. Stabil walau PPPoE diganti (nama tetap).
+    const subsWithCust = allSubs.filter((s) => s.customer);
+    const resolveSub = (d: Device): string | null => {
+      if (d.subscription?.id) return String(d.subscription.id);
+      const text = (d.serialNumber ?? '').toLowerCase();
+      if (!text) return null;
+      let best: { subId: string; len: number } | null = null;
+      for (const s of subsWithCust) {
+        for (const cand of [s.customer.fullName, s.pppoeUser]) {
+          const key = (cand ?? '').trim().toLowerCase();
+          if (key.length >= 3 && text.includes(key) && (!best || key.length > best.len)) {
+            best = { subId: String(s.id), len: key.length };
+          }
+        }
+      }
+      return best?.subId ?? null;
+    };
+
+    const deviceSubId = new Map<string, string>();
     const subToOnu = new Map<string, Device>();
     for (const d of onus) {
-      if (d.subscription?.id) subToOnu.set(String(d.subscription.id), d);
+      const sid = resolveSub(d);
+      if (sid) {
+        deviceSubId.set(String(d.id), sid);
+        if (!subToOnu.has(sid)) subToOnu.set(sid, d);
+        // Persist tautan bila belum ada, agar notifikasi & data konsisten.
+        if (!d.subscription) {
+          this.devices.update(d.id, { subscription: { id: sid } as any }).catch(() => {});
+        }
+      }
     }
     const classify = (d?: Device): 'ok' | 'warning' | 'critical' | null => {
       if (!d) return null;
@@ -109,7 +139,7 @@ export class GenieacsService {
     // atau ONU yang belum/tak lapor ke ACS) supaya redamannya tetap tampil.
     const subById = new Map(allSubs.map((s) => [String(s.id), s]));
     for (const d of onus) {
-      const subId = d.subscription?.id ? String(d.subscription.id) : null;
+      const subId = deviceSubId.get(String(d.id)) ?? null;
       if (subId && usedSubIds.has(subId)) continue;
       const s = subId ? subById.get(subId) : undefined;
       rows.push({
