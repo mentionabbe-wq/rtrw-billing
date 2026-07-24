@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Wifi, Power, Loader2, Radar, Users2, Plus, RefreshCw, Router as RouterIcon,
-  RotateCw, X, Trash2,
+  RotateCw, X, Trash2, Settings,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCan } from '@/lib/rbac';
@@ -72,6 +72,7 @@ function GenieacsPanel() {
   const qc = useQueryClient();
   const canControl = useCan('monitoring.control');
   const [wifiFor, setWifiFor] = useState<AcsDevice | null>(null);
+  const [setupFor, setSetupFor] = useState<AcsDevice | null>(null);
 
   const { data, isLoading, refetch, isFetching } = useQuery<AcsDevice[]>({
     queryKey: ['genieacs-devices'],
@@ -154,6 +155,7 @@ function GenieacsPanel() {
                   {canControl && (
                     <td className="px-3 py-2">
                       <div className="flex justify-end gap-1">
+                        <button className="btn-ghost" title="Pengaturan ONU (kaitkan pelanggan)" onClick={() => setSetupFor(d)}><Settings size={15} /></button>
                         {d.acsId && (
                           <>
                             <button className="btn-ghost text-brand-600" title="Ubah WiFi" onClick={() => setWifiFor(d)}><Wifi size={15} /></button>
@@ -186,6 +188,63 @@ function GenieacsPanel() {
 
       {wifiFor && <AcsWifiModal device={wifiFor} onClose={() => setWifiFor(null)}
         onSaved={() => { setWifiFor(null); qc.invalidateQueries({ queryKey: ['genieacs-devices'] }); }} />}
+      {setupFor && <OnuSetupModal device={setupFor} onClose={() => setSetupFor(null)}
+        onSaved={() => { setSetupFor(null); qc.invalidateQueries({ queryKey: ['genieacs-devices'] }); }} />}
+    </div>
+  );
+}
+
+/* -------------------- Pengaturan ONU: kaitkan pelanggan manual -------------------- */
+interface CustomerLite { fullName: string; customerNo: string; subscriptionId: string | null }
+
+function OnuSetupModal({ device, onClose, onSaved }: { device: AcsDevice; onClose: () => void; onSaved: () => void }) {
+  const [subId, setSubId] = useState('');
+  const { data: subs, isLoading } = useQuery<CustomerLite[]>({
+    queryKey: ['customers'],
+    queryFn: async () => (await api.get('/customers')).data,
+  });
+  const assign = useMutation({
+    mutationFn: (subscriptionId: string | null) =>
+      api.post(`/monitoring/devices/${device.deviceId}/assign`, { subscriptionId }),
+    onSuccess: onSaved,
+    onError: (e: any) => alert(`Gagal: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="card w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 font-medium"><Settings size={16} /> Pengaturan ONU</h3>
+          <button className="btn-ghost" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="mb-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
+          <div className="font-mono">{device.serial ?? '—'}</div>
+          <div>Pelanggan saat ini: <b>{device.customerName ?? '— tak terdeteksi —'}</b></div>
+        </div>
+        <p className="mb-2 text-xs text-slate-400">
+          Kaitkan ONU ini ke pelanggan secara manual bila deteksi otomatis (via user
+          PPPoE / nama pelanggan di nama ONU) tidak cocok. Kaitan disimpan permanen.
+        </p>
+        <label className="label">Pelanggan</label>
+        <select className="input mb-4" value={subId} onChange={(e) => setSubId(e.target.value)} disabled={isLoading}>
+          <option value="">{isLoading ? 'Memuat…' : '— pilih pelanggan —'}</option>
+          {subs?.filter((s) => s.subscriptionId).map((s) => (
+            <option key={s.subscriptionId!} value={s.subscriptionId!}>{s.fullName} ({s.customerNo})</option>
+          ))}
+        </select>
+        <div className="flex justify-between gap-2">
+          <button className="btn-ghost text-sm text-rose-600" disabled={assign.isPending}
+            onClick={() => assign.mutate(null)} title="Lepaskan kaitan pelanggan">
+            Lepas kaitan
+          </button>
+          <div className="flex gap-2">
+            <button className="btn-ghost" onClick={onClose}>Batal</button>
+            <button className="btn-primary" disabled={!subId || assign.isPending} onClick={() => assign.mutate(subId)}>
+              {assign.isPending ? <Loader2 size={16} className="animate-spin" /> : 'Simpan'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

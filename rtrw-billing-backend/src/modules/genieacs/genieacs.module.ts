@@ -86,12 +86,18 @@ export class GenieacsService {
       if (!text) return null;
       let best: { subId: string; len: number } | null = null;
       for (const s of subsWithCust) {
-        const key = (s.pppoeUser ?? '').trim().toLowerCase();
-        if (key.length < 2) continue;
-        // Kata utuh: "a20" tak salah cocok dgn "a200"/"ba20".
-        const re = new RegExp(`(^|[^a-z0-9])${escapeRe(key)}([^a-z0-9]|$)`);
-        if (re.test(text) && (!best || key.length > best.len)) {
-          best = { subId: String(s.id), len: key.length };
+        // Cocokkan user PPPoE ATAU nama pelanggan (kata utuh) di dalam nama ONU.
+        const keys = [
+          (s.pppoeUser ?? '').trim().toLowerCase(),
+          (s.customer?.fullName ?? '').trim().toLowerCase(),
+        ];
+        for (const key of keys) {
+          if (key.length < 2) continue;
+          // Kata utuh: "a20" tak salah cocok dgn "a200"/"ba20".
+          const re = new RegExp(`(^|[^a-z0-9])${escapeRe(key)}([^a-z0-9]|$)`);
+          if (re.test(text) && (!best || key.length > best.len)) {
+            best = { subId: String(s.id), len: key.length };
+          }
         }
       }
       return best?.subId ?? null;
