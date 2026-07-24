@@ -123,8 +123,9 @@ function GenieacsPanel() {
         </button>
       </div>
       <p className="mb-3 text-xs text-slate-400">
-        Pelanggan terdeteksi otomatis dari IP WAN → sesi PPPoE. Power (RX) dari polling OLT
-        via ONU yang didaftarkan di Scan (ambang: &lt; −25 warning, &lt; −27 critical).
+        Pelanggan terdeteksi otomatis via <b>user PPPoE</b> — beri nama tiap ONU di OLT
+        dengan user PPPoE-nya (mis. <code>a20</code>), sistem menautkan sendiri. Setelah
+        tertaut, ganti user PPPoE di menu Pelanggan tetap aman. Power (RX) dari polling OLT.
         Ubah SSID/password WiFi, refresh, atau reboot ONU dari sini.
       </p>
 

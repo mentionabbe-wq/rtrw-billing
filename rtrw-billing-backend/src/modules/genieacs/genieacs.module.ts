@@ -74,21 +74,24 @@ export class GenieacsService {
       relations: { subscription: true },
     });
 
-    // Resolusi pelanggan OTOMATIS: gunakan tautan langganan bila ada; jika tidak,
-    // cocokkan NAMA ONU (serialNumber, mis. "gpon 0/0/1 onu 1 Pak Wawan") dengan
-    // nama pelanggan / user PPPoE. Stabil walau PPPoE diganti (nama tetap).
+    // Resolusi pelanggan OTOMATIS berdasarkan USER PPPoE: cari user PPPoE
+    // (sbg kata utuh) di dalam nama ONU dari OLT (serialNumber, mis.
+    // "gpon 0/0/1 onu 1 a20"). Setelah cocok sekali → dipersist by ID langganan,
+    // jadi ganti user PPPoE di menu Pelanggan tetap aman.
     const subsWithCust = allSubs.filter((s) => s.customer);
+    const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const resolveSub = (d: Device): string | null => {
       if (d.subscription?.id) return String(d.subscription.id);
       const text = (d.serialNumber ?? '').toLowerCase();
       if (!text) return null;
       let best: { subId: string; len: number } | null = null;
       for (const s of subsWithCust) {
-        for (const cand of [s.customer.fullName, s.pppoeUser]) {
-          const key = (cand ?? '').trim().toLowerCase();
-          if (key.length >= 3 && text.includes(key) && (!best || key.length > best.len)) {
-            best = { subId: String(s.id), len: key.length };
-          }
+        const key = (s.pppoeUser ?? '').trim().toLowerCase();
+        if (key.length < 2) continue;
+        // Kata utuh: "a20" tak salah cocok dgn "a200"/"ba20".
+        const re = new RegExp(`(^|[^a-z0-9])${escapeRe(key)}([^a-z0-9]|$)`);
+        if (re.test(text) && (!best || key.length > best.len)) {
+          best = { subId: String(s.id), len: key.length };
         }
       }
       return best?.subId ?? null;
