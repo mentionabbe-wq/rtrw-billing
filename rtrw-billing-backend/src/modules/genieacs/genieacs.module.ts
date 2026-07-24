@@ -98,12 +98,10 @@ export class GenieacsService {
     };
 
     const deviceSubId = new Map<string, string>();
-    const subToOnu = new Map<string, Device>();
     for (const d of onus) {
       const sid = resolveSub(d);
       if (sid) {
         deviceSubId.set(String(d.id), sid);
-        if (!subToOnu.has(sid)) subToOnu.set(sid, d);
         // Persist tautan bila belum ada, agar notifikasi & data konsisten.
         if (!d.subscription) {
           this.devices.update(d.id, { subscription: { id: sid } as any }).catch(() => {});
@@ -120,49 +118,35 @@ export class GenieacsService {
       return 'ok';
     };
 
-    const usedSubIds = new Set<string>();
-    const rows: any[] = acsDevices.map((d) => {
-      const user = d.ip ? ipToUser.get(d.ip) : undefined;
+    // TR-069 device di-index per langganan (via IP → user PPPoE → langganan),
+    // hanya utk MEMPERKAYA baris ONU hasil Scan (aksi WiFi/reboot bila ada).
+    const acsBySub = new Map<string, any>();
+    for (const a of acsDevices) {
+      const user = a.ip ? ipToUser.get(a.ip) : undefined;
       const sub = user ? userToSub.get(user.toLowerCase()) : undefined;
-      const onu = sub ? subToOnu.get(sub.subId) : undefined;
-      if (sub) usedSubIds.add(sub.subId);
-      return {
-        ...d,
-        acsId: d.id,          // id TR-069 (aksi WiFi/reboot/hapus GenieACS)
-        deviceId: onu ? String(onu.id) : null, // id device monitoring OLT
-        source: 'tr069',
-        pppoeUser: user ?? null,
-        customerName: sub?.name ?? (user || null),
-        rxPower: onu?.lastRxPower != null ? Number(onu.lastRxPower) : null,
-        opticalHealth: classify(onu),
-      };
-    });
-
-    // Tambahkan ONU dari OLT yang BELUM diwakili baris TR-069 (mis. ONU bridge
-    // atau ONU yang belum/tak lapor ke ACS) supaya redamannya tetap tampil.
-    const subById = new Map(allSubs.map((s) => [String(s.id), s]));
-    for (const d of onus) {
-      const subId = deviceSubId.get(String(d.id)) ?? null;
-      if (subId && usedSubIds.has(subId)) continue;
-      const s = subId ? subById.get(subId) : undefined;
-      rows.push({
-        id: `olt-${d.id}`,
-        acsId: null,
-        deviceId: String(d.id),
-        source: 'olt',
-        serial: d.serialNumber,
-        manufacturer: null, model: null, software: null,
-        ssid: null, ip: null,
-        lastInform: d.updatedAt ? new Date(d.updatedAt).toISOString() : null,
-        online: d.lastStatus === 'online',
-        pppoeUser: s?.pppoeUser ?? null,
-        customerName: s?.customer?.fullName ?? s?.pppoeUser ?? null,
-        rxPower: d.lastRxPower != null ? Number(d.lastRxPower) : null,
-        opticalHealth: classify(d),
-      });
+      if (sub && !acsBySub.has(sub.subId)) acsBySub.set(sub.subId, a);
     }
 
-    return rows;
+    // SATU baris per ONU hasil Scan (device monitoring OLT). Redaman dari OLT,
+    // pelanggan otomatis dari user PPPoE, kontrol WiFi/reboot dari TR-069 (bila lapor).
+    const subById = new Map(allSubs.map((s) => [String(s.id), s]));
+    return onus.map((d) => {
+      const subId = deviceSubId.get(String(d.id)) ?? null;
+      const s = subId ? subById.get(subId) : undefined;
+      const acs = subId ? acsBySub.get(subId) : undefined;
+      return {
+        id: String(d.id),
+        deviceId: String(d.id),      // hapus dari monitoring
+        acsId: acs?.id ?? null,       // aksi WiFi/refresh/reboot (bila lapor TR-069)
+        serial: d.serialNumber,
+        model: acs ? [acs.manufacturer, acs.model ?? acs.software].filter(Boolean).join(' ') : null,
+        customerName: s?.customer?.fullName ?? null,
+        pppoeUser: s?.pppoeUser ?? null,
+        rxPower: d.lastRxPower != null ? Number(d.lastRxPower) : null,
+        opticalHealth: classify(d),
+        online: acs ? acs.online : d.lastStatus === 'online',
+      };
+    });
   }
 
   /** URL NBI + header auth efektif (DB dulu, env fallback). */

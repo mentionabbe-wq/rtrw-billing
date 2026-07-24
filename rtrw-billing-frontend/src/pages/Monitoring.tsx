@@ -73,7 +73,7 @@ function GenieacsPanel() {
   const canControl = useCan('monitoring.control');
   const [wifiFor, setWifiFor] = useState<AcsDevice | null>(null);
 
-  const { data, isLoading, error, refetch, isFetching } = useQuery<AcsDevice[]>({
+  const { data, isLoading, refetch, isFetching } = useQuery<AcsDevice[]>({
     queryKey: ['genieacs-devices'],
     queryFn: async () => (await api.get('/genieacs/devices')).data,
     retry: false,
@@ -89,69 +89,38 @@ function GenieacsPanel() {
     },
     onError: (e: any) => alert(`Gagal: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
   });
-  const del = useMutation({
-    mutationFn: (id: string) => api.delete(`/genieacs/devices/${encodeURIComponent(id)}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['genieacs-devices'] }),
-    onError: (e: any) => alert(`Gagal hapus: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
-  });
   const delDevice = useMutation({
     mutationFn: (id: string) => api.delete(`/monitoring/devices/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['genieacs-devices'] }),
     onError: (e: any) => alert(`Gagal hapus: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
-  });
-  // Daftar pelanggan utk mengaitkan device OLT yang belum terkait.
-  const { data: subs } = useQuery<{ fullName: string; customerNo: string; subscriptionId: string | null }[]>({
-    queryKey: ['customers'],
-    queryFn: async () => (await api.get('/customers')).data,
-    enabled: canControl,
-  });
-  const assign = useMutation({
-    mutationFn: ({ deviceId, subscriptionId }: { deviceId: string; subscriptionId: string }) =>
-      api.post(`/monitoring/devices/${deviceId}/assign`, { subscriptionId }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['genieacs-devices'] }),
-    onError: (e: any) => alert(`Gagal mengaitkan: ${e?.response?.data?.message ?? e?.message}`),
   });
 
   return (
     <div className="card p-5">
       <div className="flex items-center justify-between mb-1">
         <h2 className="flex items-center gap-2 font-medium">
-          <RouterIcon size={16} /> ONU Pelanggan
+          <RouterIcon size={16} /> Monitoring ONU
         </h2>
         <button className="btn-ghost text-sm" onClick={() => refetch()} disabled={isFetching} title="Refresh daftar">
           {isFetching ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
         </button>
       </div>
       <p className="mb-3 text-xs text-slate-400">
-        Pelanggan terdeteksi otomatis via <b>user PPPoE</b> — beri nama tiap ONU di OLT
-        dengan user PPPoE-nya (mis. <code>a20</code>), sistem menautkan sendiri. Setelah
-        tertaut, ganti user PPPoE di menu Pelanggan tetap aman. Power (RX) dari polling OLT.
-        Ubah SSID/password WiFi, refresh, atau reboot ONU dari sini.
+        ONU yang di-Scan &amp; Daftarkan. Pelanggan terdeteksi otomatis via <b>user PPPoE</b>
+        (beri nama ONU di OLT dgn user PPPoE-nya). Redaman (RX) dari polling OLT.
       </p>
 
       {isLoading && <p className="text-sm text-slate-400 py-4 text-center">Memuat…</p>}
-
-      {error != null && (
-        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
-          Gagal membaca GenieACS: {(error as any)?.response?.data?.message ?? (error as any)?.message}.
-          Isi URL GenieACS di menu <strong>Pengaturan → Integrasi</strong>
-          (mis. <code className="bg-amber-100 px-1 rounded">http://IP-SERVER:7557</code>) dan arahkan ONU
-          ke ACS <code className="bg-amber-100 px-1 rounded">http://IP-SERVER:7547</code>.
-        </div>
-      )}
 
       {data && (
         <div className="max-h-96 overflow-auto rounded-lg border border-slate-100">
           <table className="min-w-full text-sm">
             <thead className="sticky top-0 bg-slate-50 text-left text-slate-500">
               <tr>
-                <th className="px-3 py-2 font-medium">Serial / Model</th>
+                <th className="px-3 py-2 font-medium">ONU</th>
                 <th className="px-3 py-2 font-medium">Pelanggan</th>
-                <th className="px-3 py-2 font-medium">SSID</th>
-                <th className="px-3 py-2 font-medium">IP WAN</th>
-                <th className="px-3 py-2 font-medium">Power (dBm)</th>
+                <th className="px-3 py-2 font-medium">Redaman (dBm)</th>
                 <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 font-medium">Lapor</th>
                 {canControl && <th className="px-3 py-2 font-medium text-right">Aksi</th>}
               </tr>
             </thead>
@@ -160,46 +129,27 @@ function GenieacsPanel() {
                 <tr key={d.id} className="hover:bg-slate-50">
                   <td className="px-3 py-2">
                     <div className="font-mono text-xs">{d.serial ?? '—'}</div>
-                    <div className="text-xs text-slate-400">{[d.manufacturer, d.model ?? d.software].filter(Boolean).join(' ')}</div>
+                    {d.model && <div className="text-xs text-slate-400">{d.model}</div>}
                   </td>
                   <td className="px-3 py-2">
-                    {/* Baris OLT yg pelanggannya BELUM terdeteksi → dropdown kaitkan manual (fallback). */}
-                    {canControl && d.source === 'olt' && d.deviceId && !d.customerName ? (
-                      <select className="input text-xs py-1 min-w-[9rem]"
-                        defaultValue=""
-                        disabled={assign.isPending}
-                        onChange={(e) => e.target.value && assign.mutate({ deviceId: d.deviceId!, subscriptionId: e.target.value })}>
-                        <option value="">{d.customerName ?? '— kaitkan pelanggan —'}</option>
-                        {subs?.filter((s) => s.subscriptionId).map((s) => (
-                          <option key={s.subscriptionId!} value={s.subscriptionId!}>
-                            {s.fullName} ({s.customerNo})
-                          </option>
-                        ))}
-                      </select>
-                    ) : d.customerName
+                    {d.customerName
                       ? <span className="text-slate-700">{d.customerName}</span>
                       : <span className="text-xs text-slate-400">— tak terdeteksi —</span>}
                     {d.pppoeUser && <div className="text-xs text-slate-400 font-mono">{d.pppoeUser}</div>}
                   </td>
-                  <td className="px-3 py-2 text-xs">{d.ssid ?? '—'}</td>
-                  <td className="px-3 py-2 font-mono text-xs">{d.ip ?? '—'}</td>
                   <td className={`px-3 py-2 ${dbmTone(d.rxPower ?? null)}`}>
                     {d.rxPower != null ? d.rxPower.toFixed(2) : '—'}
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap gap-1">
-                      <span className={`badge ${d.online ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                        {d.online ? 'online' : 'offline'}
-                      </span>
-                      {d.opticalHealth && (
-                        <span className={`badge ${healthTone[d.opticalHealth] ?? 'bg-slate-100 text-slate-500'}`}>
-                          {d.opticalHealth === 'ok' ? 'normal' : d.opticalHealth}
-                        </span>
-                      )}
+                      {d.opticalHealth
+                        ? <span className={`badge ${healthTone[d.opticalHealth] ?? 'bg-slate-100 text-slate-500'}`}>
+                            {d.opticalHealth === 'ok' ? 'normal' : d.opticalHealth}
+                          </span>
+                        : <span className={`badge ${d.online ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                            {d.online ? 'online' : 'offline'}
+                          </span>}
                     </div>
-                  </td>
-                  <td className="px-3 py-2 text-xs text-slate-500">
-                    {d.lastInform ? new Date(d.lastInform).toLocaleString('id-ID') : '—'}
                   </td>
                   {canControl && (
                     <td className="px-3 py-2">
@@ -214,19 +164,9 @@ function GenieacsPanel() {
                             </button>
                           </>
                         )}
-                        {!d.acsId && (
-                          <span className="text-xs text-slate-400 mr-1" title="ONU ini hanya terpantau dari OLT (belum lapor TR-069)">OLT</span>
-                        )}
-                        {/* Satu tombol hapus: utamakan lepas dari monitoring OLT; bila hanya TR-069, hapus dari GenieACS. */}
-                        <button className="btn-ghost text-slate-400 hover:text-rose-600" title="Hapus ONU dari daftar"
-                          disabled={delDevice.isPending || del.isPending}
-                          onClick={() => {
-                            if (d.deviceId) {
-                              if (confirm(`Hapus ONU ${d.serial ?? ''} dari monitoring? (redaman berhenti dipantau; bisa didaftarkan lagi lewat Scan)`)) delDevice.mutate(d.deviceId!);
-                            } else if (d.acsId) {
-                              if (confirm(`Hapus ONU ${d.serial ?? d.acsId} dari GenieACS? (ONU muncul lagi bila masih inform)`)) del.mutate(d.acsId!);
-                            }
-                          }}>
+                        <button className="btn-ghost text-slate-400 hover:text-rose-600" title="Hapus ONU dari monitoring"
+                          disabled={delDevice.isPending}
+                          onClick={() => { if (confirm(`Hapus ONU ${d.serial ?? ''} dari monitoring? (bisa didaftarkan lagi lewat Scan)`)) delDevice.mutate(d.deviceId!); }}>
                           <Trash2 size={15} />
                         </button>
                       </div>
@@ -235,9 +175,8 @@ function GenieacsPanel() {
                 </tr>
               ))}
               {!data.length && (
-                <tr><td colSpan={canControl ? 8 : 7} className="px-3 py-6 text-center text-slate-400">
-                  Belum ada ONU. Klik <b>Scan</b> di bawah lalu <b>Daftarkan</b> untuk memantau redaman,
-                  atau arahkan ONU ke ACS <code>http://IP-SERVER:7547</code> untuk kontrol WiFi/reboot.
+                <tr><td colSpan={canControl ? 5 : 4} className="px-3 py-6 text-center text-slate-400">
+                  Belum ada ONU. Klik <b>Scan</b> di bawah lalu <b>Daftarkan</b>.
                 </td></tr>
               )}
             </tbody>
@@ -314,12 +253,6 @@ function OnuScanPanel() {
     queryKey: ['olts'],
     queryFn: async () => (await api.get('/olts')).data,
   });
-  // ONU yg SUDAH terdaftar (agar tak muncul tombol Daftarkan lagi).
-  const { data: registered } = useQuery<{ oltIfIndex: number | null; onuId: number | null }[]>({
-    queryKey: ['monitoring-devices'],
-    queryFn: async () => (await api.get('/monitoring/devices')).data,
-  });
-  const regSet = new Set((registered ?? []).map((d) => `${d.oltIfIndex}-${d.onuId}`));
   const scan = useMutation({
     mutationFn: async (id: string) => (await api.get<WalkedOnu[]>(`/olts/${id}/onus`)).data,
     onError: (e: any) => alert(`Scan gagal: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
@@ -337,15 +270,13 @@ function OnuScanPanel() {
   });
   const registerAll = async () => {
     if (!scan.data) return;
-    const baru = scan.data.filter((o) => !regSet.has(`${o.ifIndex}-${o.onuId}`));
-    for (const o of baru) {
+    for (const o of scan.data) {
       await api.post('/monitoring/devices/register', {
         oltId, ifIndex: o.ifIndex, onuId: o.onuId, dBm: o.dBm, name: o.name, description: o.description,
       }).catch(() => {});
     }
     qc.invalidateQueries({ queryKey: ['genieacs-devices'] });
-    qc.invalidateQueries({ queryKey: ['monitoring-devices'] });
-    alert(`${baru.length} ONU baru didaftarkan. Pelanggan terkait otomatis dari nama ONU.`);
+    alert(`${scan.data.length} ONU didaftarkan. Pelanggan terkait otomatis dari nama ONU.`);
   };
 
   return (
@@ -380,43 +311,31 @@ function OnuScanPanel() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {scan.data.map((o, i) => {
-                  const sudah = regSet.has(`${o.ifIndex}-${o.onuId}`);
-                  return (
-                    <tr key={i}>
-                      <td className="px-3 py-2 font-mono text-xs">{o.name ?? fmtPort(o.ifIndex, o.onuId)}</td>
-                      <td className="px-3 py-2 text-xs text-slate-500">{o.description ?? '—'}</td>
-                      <td className={`px-3 py-2 ${dbmTone(o.dBm)}`}>{o.dBm == null ? 'LOS' : o.dBm.toFixed(2)}</td>
-                      <td className="px-3 py-2"><span className={`badge ${healthTone[o.health] ?? 'bg-slate-100'}`}>{o.health}</span></td>
-                      <td className="px-3 py-2 text-right">
-                        {sudah ? (
-                          <span className="text-xs text-emerald-600 font-medium">✓ Terdaftar</span>
-                        ) : (
-                          <button className="btn-ghost py-1 text-xs text-brand-600"
-                            disabled={register.isPending}
-                            onClick={() => register.mutate(o)}
-                            title="Daftarkan ke monitoring">
-                            <Plus size={13} /> Daftarkan
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {scan.data.map((o, i) => (
+                  <tr key={i}>
+                    <td className="px-3 py-2 font-mono text-xs">{o.name ?? fmtPort(o.ifIndex, o.onuId)}</td>
+                    <td className="px-3 py-2 text-xs text-slate-500">{o.description ?? '—'}</td>
+                    <td className={`px-3 py-2 ${dbmTone(o.dBm)}`}>{o.dBm == null ? 'LOS' : o.dBm.toFixed(2)}</td>
+                    <td className="px-3 py-2"><span className={`badge ${healthTone[o.health] ?? 'bg-slate-100'}`}>{o.health}</span></td>
+                    <td className="px-3 py-2 text-right">
+                      <button className="btn-ghost py-1 text-xs text-brand-600"
+                        disabled={register.isPending}
+                        onClick={() => register.mutate(o)}
+                        title="Daftarkan ke monitoring">
+                        <Plus size={13} /> Daftarkan
+                      </button>
+                    </td>
+                  </tr>
+                ))}
                 {!scan.data.length && <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-400">Tidak ada ONU terbaca.</td></tr>}
               </tbody>
             </table>
           </div>
-          {(() => {
-            const baru = scan.data.filter((o) => !regSet.has(`${o.ifIndex}-${o.onuId}`)).length;
-            return baru > 0 ? (
-              <button className="btn-ghost text-sm mt-2" onClick={registerAll}>
-                <Plus size={14} /> Daftarkan Semua ({baru} baru)
-              </button>
-            ) : (
-              <p className="text-xs text-emerald-600 mt-2">✓ Semua ONU sudah terdaftar.</p>
-            );
-          })()}
+          {scan.data.length > 0 && (
+            <button className="btn-ghost text-sm mt-2" onClick={registerAll}>
+              <Plus size={14} /> Daftarkan Semua ({scan.data.length})
+            </button>
+          )}
         </>
       )}
     </div>
