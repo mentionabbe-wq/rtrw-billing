@@ -203,7 +203,7 @@ function GenieacsPanel() {
                   {canControl && (
                     <td className="px-3 py-2">
                       <div className="flex justify-end gap-1">
-                        {d.acsId ? (
+                        {d.acsId && (
                           <>
                             <button className="btn-ghost text-brand-600" title="Ubah WiFi" onClick={() => setWifiFor(d)}><Wifi size={15} /></button>
                             <button className="btn-ghost" title="Refresh data ONU" disabled={act.isPending} onClick={() => act.mutate({ id: d.acsId!, op: 'refresh' })}><RotateCw size={15} /></button>
@@ -211,20 +211,23 @@ function GenieacsPanel() {
                               onClick={() => { if (confirm(`Reboot ONU ${d.serial ?? d.acsId}?`)) act.mutate({ id: d.acsId!, op: 'reboot' }); }}>
                               <Power size={15} />
                             </button>
-                            <button className="btn-ghost text-slate-400 hover:text-rose-600" title="Hapus dari GenieACS" disabled={del.isPending}
-                              onClick={() => { if (confirm(`Hapus ONU ${d.serial ?? d.acsId} dari GenieACS? (ONU muncul lagi bila masih inform)`)) del.mutate(d.acsId!); }}>
-                              <Trash2 size={15} />
-                            </button>
                           </>
-                        ) : (
+                        )}
+                        {!d.acsId && (
                           <span className="text-xs text-slate-400 mr-1" title="ONU ini hanya terpantau dari OLT (belum lapor TR-069)">OLT</span>
                         )}
-                        {d.deviceId && (
-                          <button className="btn-ghost text-slate-400 hover:text-rose-600" title="Hapus dari monitoring OLT" disabled={delDevice.isPending}
-                            onClick={() => { if (confirm(`Hapus ONU ${d.serial ?? ''} dari monitoring OLT?`)) delDevice.mutate(d.deviceId!); }}>
-                            <Trash2 size={15} />
-                          </button>
-                        )}
+                        {/* Satu tombol hapus: utamakan lepas dari monitoring OLT; bila hanya TR-069, hapus dari GenieACS. */}
+                        <button className="btn-ghost text-slate-400 hover:text-rose-600" title="Hapus ONU dari daftar"
+                          disabled={delDevice.isPending || del.isPending}
+                          onClick={() => {
+                            if (d.deviceId) {
+                              if (confirm(`Hapus ONU ${d.serial ?? ''} dari monitoring? (redaman berhenti dipantau; bisa didaftarkan lagi lewat Scan)`)) delDevice.mutate(d.deviceId!);
+                            } else if (d.acsId) {
+                              if (confirm(`Hapus ONU ${d.serial ?? d.acsId} dari GenieACS? (ONU muncul lagi bila masih inform)`)) del.mutate(d.acsId!);
+                            }
+                          }}>
+                          <Trash2 size={15} />
+                        </button>
                       </div>
                     </td>
                   )}
