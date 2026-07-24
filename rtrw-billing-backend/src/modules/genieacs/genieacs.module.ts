@@ -38,7 +38,10 @@ export class GenieacsService {
    * Juga gabungkan redaman optik (RX) dari device monitoring OLT via langganan.
    */
   async listDevicesWithCustomer() {
-    const acsDevices = await this.listDevices();
+    // GenieACS OPSIONAL — bila belum dikonfigurasi / tak terjangkau, tetap
+    // tampilkan ONU yang terdaftar dari OLT (redaman) agar tidak hilang.
+    let acsDevices: any[] = [];
+    try { acsDevices = await this.listDevices(); } catch { acsDevices = []; }
 
     // Peta IP → user PPPoE dari semua router online.
     const ipToUser = new Map<string, string>();
@@ -84,18 +87,49 @@ export class GenieacsService {
       return 'ok';
     };
 
-    return acsDevices.map((d) => {
+    const usedSubIds = new Set<string>();
+    const rows: any[] = acsDevices.map((d) => {
       const user = d.ip ? ipToUser.get(d.ip) : undefined;
       const sub = user ? userToSub.get(user.toLowerCase()) : undefined;
       const onu = sub ? subToOnu.get(sub.subId) : undefined;
+      if (sub) usedSubIds.add(sub.subId);
       return {
         ...d,
+        acsId: d.id,          // id TR-069 (aksi WiFi/reboot/hapus GenieACS)
+        deviceId: onu ? String(onu.id) : null, // id device monitoring OLT
+        source: 'tr069',
         pppoeUser: user ?? null,
         customerName: sub?.name ?? (user || null),
         rxPower: onu?.lastRxPower != null ? Number(onu.lastRxPower) : null,
         opticalHealth: classify(onu),
       };
     });
+
+    // Tambahkan ONU dari OLT yang BELUM diwakili baris TR-069 (mis. ONU bridge
+    // atau ONU yang belum/tak lapor ke ACS) supaya redamannya tetap tampil.
+    const subById = new Map(allSubs.map((s) => [String(s.id), s]));
+    for (const d of onus) {
+      const subId = d.subscription?.id ? String(d.subscription.id) : null;
+      if (subId && usedSubIds.has(subId)) continue;
+      const s = subId ? subById.get(subId) : undefined;
+      rows.push({
+        id: `olt-${d.id}`,
+        acsId: null,
+        deviceId: String(d.id),
+        source: 'olt',
+        serial: d.serialNumber,
+        manufacturer: null, model: null, software: null,
+        ssid: null, ip: null,
+        lastInform: d.updatedAt ? new Date(d.updatedAt).toISOString() : null,
+        online: d.lastStatus === 'online',
+        pppoeUser: s?.pppoeUser ?? null,
+        customerName: s?.customer?.fullName ?? s?.pppoeUser ?? null,
+        rxPower: d.lastRxPower != null ? Number(d.lastRxPower) : null,
+        opticalHealth: classify(d),
+      });
+    }
+
+    return rows;
   }
 
   /** URL NBI + header auth efektif (DB dulu, env fallback). */
