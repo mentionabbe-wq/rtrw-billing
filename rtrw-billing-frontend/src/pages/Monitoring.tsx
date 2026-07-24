@@ -313,6 +313,12 @@ function OnuScanPanel() {
     queryKey: ['olts'],
     queryFn: async () => (await api.get('/olts')).data,
   });
+  // ONU yg SUDAH terdaftar (agar tak muncul tombol Daftarkan lagi).
+  const { data: registered } = useQuery<{ oltIfIndex: number | null; onuId: number | null }[]>({
+    queryKey: ['monitoring-devices'],
+    queryFn: async () => (await api.get('/monitoring/devices')).data,
+  });
+  const regSet = new Set((registered ?? []).map((d) => `${d.oltIfIndex}-${d.onuId}`));
   const scan = useMutation({
     mutationFn: async (id: string) => (await api.get<WalkedOnu[]>(`/olts/${id}/onus`)).data,
     onError: (e: any) => alert(`Scan gagal: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
@@ -324,21 +330,21 @@ function OnuScanPanel() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['genieacs-devices'] });
-      alert('ONU didaftarkan — cek tabel ONU di atas.');
+      qc.invalidateQueries({ queryKey: ['monitoring-devices'] });
     },
     onError: (e: any) => alert(`Gagal mendaftarkan: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
   });
   const registerAll = async () => {
     if (!scan.data) return;
-    let matched = 0;
-    for (const o of scan.data) {
-      const r = await api.post('/monitoring/devices/register', {
+    const baru = scan.data.filter((o) => !regSet.has(`${o.ifIndex}-${o.onuId}`));
+    for (const o of baru) {
+      await api.post('/monitoring/devices/register', {
         oltId, ifIndex: o.ifIndex, onuId: o.onuId, dBm: o.dBm, name: o.name, description: o.description,
-      }).catch(() => null);
-      if (r?.data?.matched) matched++;
+      }).catch(() => {});
     }
     qc.invalidateQueries({ queryKey: ['genieacs-devices'] });
-    alert(`${scan.data.length} ONU didaftarkan — ${matched} otomatis terkait ke pelanggan (via deskripsi = user PPPoE).`);
+    qc.invalidateQueries({ queryKey: ['monitoring-devices'] });
+    alert(`${baru.length} ONU baru didaftarkan. Pelanggan terkait otomatis dari nama ONU.`);
   };
 
   return (
@@ -373,31 +379,43 @@ function OnuScanPanel() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {scan.data.map((o, i) => (
-                  <tr key={i}>
-                    <td className="px-3 py-2 font-mono text-xs">{o.name ?? fmtPort(o.ifIndex, o.onuId)}</td>
-                    <td className="px-3 py-2 text-xs text-slate-500">{o.description ?? '—'}</td>
-                    <td className={`px-3 py-2 ${dbmTone(o.dBm)}`}>{o.dBm == null ? 'LOS' : o.dBm.toFixed(2)}</td>
-                    <td className="px-3 py-2"><span className={`badge ${healthTone[o.health] ?? 'bg-slate-100'}`}>{o.health}</span></td>
-                    <td className="px-3 py-2 text-right">
-                      <button className="btn-ghost py-1 text-xs text-brand-600"
-                        disabled={register.isPending}
-                        onClick={() => register.mutate(o)}
-                        title="Daftarkan ke monitoring">
-                        <Plus size={13} /> Daftarkan
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {scan.data.map((o, i) => {
+                  const sudah = regSet.has(`${o.ifIndex}-${o.onuId}`);
+                  return (
+                    <tr key={i}>
+                      <td className="px-3 py-2 font-mono text-xs">{o.name ?? fmtPort(o.ifIndex, o.onuId)}</td>
+                      <td className="px-3 py-2 text-xs text-slate-500">{o.description ?? '—'}</td>
+                      <td className={`px-3 py-2 ${dbmTone(o.dBm)}`}>{o.dBm == null ? 'LOS' : o.dBm.toFixed(2)}</td>
+                      <td className="px-3 py-2"><span className={`badge ${healthTone[o.health] ?? 'bg-slate-100'}`}>{o.health}</span></td>
+                      <td className="px-3 py-2 text-right">
+                        {sudah ? (
+                          <span className="text-xs text-emerald-600 font-medium">✓ Terdaftar</span>
+                        ) : (
+                          <button className="btn-ghost py-1 text-xs text-brand-600"
+                            disabled={register.isPending}
+                            onClick={() => register.mutate(o)}
+                            title="Daftarkan ke monitoring">
+                            <Plus size={13} /> Daftarkan
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
                 {!scan.data.length && <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-400">Tidak ada ONU terbaca.</td></tr>}
               </tbody>
             </table>
           </div>
-          {scan.data.length > 0 && (
-            <button className="btn-ghost text-sm mt-2" onClick={registerAll}>
-              <Plus size={14} /> Daftarkan Semua ({scan.data.length})
-            </button>
-          )}
+          {(() => {
+            const baru = scan.data.filter((o) => !regSet.has(`${o.ifIndex}-${o.onuId}`)).length;
+            return baru > 0 ? (
+              <button className="btn-ghost text-sm mt-2" onClick={registerAll}>
+                <Plus size={14} /> Daftarkan Semua ({baru} baru)
+              </button>
+            ) : (
+              <p className="text-xs text-emerald-600 mt-2">✓ Semua ONU sudah terdaftar.</p>
+            );
+          })()}
         </>
       )}
     </div>
