@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Wifi, Power, Loader2, Radar, Users2, Plus, RefreshCw, Router as RouterIcon,
-  RotateCw, X, Trash2,
+  Power, Loader2, Radar, Users2, Plus, RefreshCw, Router as RouterIcon,
+  RotateCw, Trash2,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCan } from '@/lib/rbac';
@@ -66,12 +66,9 @@ interface AcsDevice {
   deviceId?: string | null;   // id device monitoring OLT (hapus dari monitoring)
   source?: 'tr069' | 'olt';
 }
-interface AcsDetail extends AcsDevice { password: string | null; ssidPath: string | null; passPath: string | null }
-
 function GenieacsPanel() {
   const qc = useQueryClient();
   const canControl = useCan('monitoring.control');
-  const [wifiFor, setWifiFor] = useState<AcsDevice | null>(null);
 
   const { data, isLoading, error, refetch, isFetching } = useQuery<AcsDevice[]>({
     queryKey: ['genieacs-devices'],
@@ -125,7 +122,7 @@ function GenieacsPanel() {
       <p className="mb-3 text-xs text-slate-400">
         Pelanggan terdeteksi otomatis dari IP WAN → sesi PPPoE. Power (RX) dari polling OLT
         via ONU yang didaftarkan di Scan (ambang: &lt; −25 warning, &lt; −27 critical).
-        Ubah SSID/password WiFi, refresh, atau reboot ONU dari sini.
+        Refresh atau reboot ONU dari sini. (User PPPoE diubah dari menu Pelanggan.)
       </p>
 
       {isLoading && <p className="text-sm text-slate-400 py-4 text-center">Memuat…</p>}
@@ -205,7 +202,6 @@ function GenieacsPanel() {
                       <div className="flex justify-end gap-1">
                         {d.acsId && (
                           <>
-                            <button className="btn-ghost text-brand-600" title="Ubah WiFi" onClick={() => setWifiFor(d)}><Wifi size={15} /></button>
                             <button className="btn-ghost" title="Refresh data ONU" disabled={act.isPending} onClick={() => act.mutate({ id: d.acsId!, op: 'refresh' })}><RotateCw size={15} /></button>
                             <button className="btn-ghost text-rose-600" title="Reboot ONU" disabled={act.isPending}
                               onClick={() => { if (confirm(`Reboot ONU ${d.serial ?? d.acsId}?`)) act.mutate({ id: d.acsId!, op: 'reboot' }); }}>
@@ -244,57 +240,6 @@ function GenieacsPanel() {
         </div>
       )}
 
-      {wifiFor && <AcsWifiModal device={wifiFor} onClose={() => setWifiFor(null)}
-        onSaved={() => { setWifiFor(null); qc.invalidateQueries({ queryKey: ['genieacs-devices'] }); }} />}
-    </div>
-  );
-}
-
-function AcsWifiModal({ device, onClose, onSaved }: { device: AcsDevice; onClose: () => void; onSaved: () => void }) {
-  const { data: detail, isLoading } = useQuery<AcsDetail>({
-    queryKey: ['acs-device', device.id],
-    queryFn: async () => (await api.get(`/genieacs/devices/${encodeURIComponent(device.id)}`)).data,
-    retry: false,
-  });
-  const save = useMutation({
-    mutationFn: (body: { ssid?: string; password?: string }) =>
-      api.post(`/genieacs/devices/${encodeURIComponent(device.id)}/wifi`, body),
-    onSuccess: () => { alert('Perintah ubah WiFi dikirim ke ONU.'); onSaved(); },
-    onError: (e: any) => alert(`Gagal: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
-  });
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
-      <div className="card w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-semibold">Ubah WiFi — {device.serial ?? device.id}</h2>
-          <button className="btn-ghost" onClick={onClose}><X size={18} /></button>
-        </div>
-        {isLoading ? (
-          <p className="py-6 text-center text-slate-400">Memuat parameter…</p>
-        ) : (
-          <form onSubmit={(e) => {
-            e.preventDefault();
-            const fd = new FormData(e.currentTarget);
-            save.mutate({
-              ssid: (fd.get('ssid') as string) || undefined,
-              password: (fd.get('password') as string) || undefined,
-            });
-          }} className="space-y-3">
-            <label className="block text-xs text-slate-500">Nama WiFi (SSID)
-              <input name="ssid" className="input mt-1" defaultValue={detail?.ssid ?? ''} placeholder="Nama WiFi" />
-            </label>
-            <label className="block text-xs text-slate-500">Password WiFi
-              <input name="password" className="input mt-1 font-mono" defaultValue={detail?.password ?? ''} placeholder="Kosongkan = tidak diubah" />
-            </label>
-            {!detail?.ssidPath && <p className="text-xs text-amber-600">Parameter WiFi tidak terdeteksi pada ONU ini.</p>}
-            <button className="btn-primary w-full" disabled={save.isPending}>
-              {save.isPending ? <Loader2 className="animate-spin" size={16} /> : <Wifi size={16} />} Terapkan ke ONU
-            </button>
-            <p className="text-xs text-slate-400">Dikirim via connection-request; bila ONU offline, diterapkan saat online berikutnya.</p>
-          </form>
-        )}
-      </div>
     </div>
   );
 }
