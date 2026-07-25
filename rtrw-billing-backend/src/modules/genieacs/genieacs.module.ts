@@ -155,6 +155,55 @@ export class GenieacsService {
     });
   }
 
+  /**
+   * Daftar perangkat TR-069 (GenieACS) diperkaya nama pelanggan.
+   * Pelanggan dicari via IP WAN → sesi PPPoE aktif → user PPPoE → langganan.
+   */
+  async listAcsWithCustomer() {
+    const acsDevices = await this.listDevices(); // biarkan error muncul bila ACS bermasalah
+
+    // Peta IP → user PPPoE dari semua router online.
+    const ipToUser = new Map<string, string>();
+    const onlineRouters = await this.routers.find({ where: { status: 'online' } });
+    await Promise.all(
+      onlineRouters.map(async (r) => {
+        try {
+          for (const s of await this.mikrotik.listActive(r)) {
+            if (s.address) ipToUser.set(String(s.address), String(s.name));
+          }
+        } catch { /* skip */ }
+      }),
+    );
+
+    const allSubs = await this.subs.find({ relations: { customer: true } });
+    const userToSub = new Map<string, { name: string; pppoeUser: string }>();
+    for (const s of allSubs) {
+      if (s.pppoeUser) {
+        userToSub.set(s.pppoeUser.toLowerCase(), {
+          name: s.customer?.fullName ?? s.pppoeUser,
+          pppoeUser: s.pppoeUser,
+        });
+      }
+    }
+
+    return acsDevices.map((a) => {
+      const user = a.ip ? ipToUser.get(a.ip) : undefined;
+      const sub = user ? userToSub.get(user.toLowerCase()) : undefined;
+      return {
+        id: a.id,
+        acsId: a.id,
+        serial: a.serial,
+        model: [a.manufacturer, a.model ?? a.software].filter(Boolean).join(' ') || null,
+        ssid: a.ssid,
+        ip: a.ip,
+        lastInform: a.lastInform,
+        online: a.online,
+        customerName: sub?.name ?? null,
+        pppoeUser: sub?.pppoeUser ?? null,
+      };
+    });
+  }
+
   /** URL NBI + header auth efektif (DB dulu, env fallback). */
   private async client(): Promise<{ base: string; headers: Record<string, string> }> {
     const cfg = await this.integrations.resolveGenieacs();
@@ -323,6 +372,7 @@ export class GenieacsController {
   constructor(private readonly service: GenieacsService) {}
 
   @Get('devices') list() { return this.service.listDevicesWithCustomer(); }
+  @Get('acs') listAcs() { return this.service.listAcsWithCustomer(); }
   @Get('devices/:id') get(@Param('id') id: string) { return this.service.getDevice(id); }
 
   @Post('devices/:id/wifi')
