@@ -133,75 +133,77 @@ export class GenieacsService {
       if (sub && !acsBySub.has(sub.subId)) acsBySub.set(sub.subId, a);
     }
 
-    // SATU baris per ONU hasil Scan (device monitoring OLT). Redaman dari OLT,
-    // pelanggan otomatis dari user PPPoE, kontrol WiFi/reboot dari TR-069 (bila lapor).
+    // SATU tabel gabungan: union ONU OLT + perangkat TR-069, digabung per
+    // pelanggan agar tak dobel. Redaman dari OLT, SSID/IP + kontrol WiFi/reboot
+    // dari TR-069. Baris tanpa langganan tetap tampil (belum terdeteksi).
     const subById = new Map(allSubs.map((s) => [String(s.id), s]));
-    return onus.map((d) => {
+    const acsModel = (a: any) =>
+      [a.manufacturer, a.model ?? a.software].filter(Boolean).join(' ') || null;
+    const rows = new Map<string, any>();
+
+    // 1) ONU dari OLT (punya redaman) — kunci per langganan bila terdeteksi.
+    for (const d of onus) {
       const subId = deviceSubId.get(String(d.id)) ?? null;
       const s = subId ? subById.get(subId) : undefined;
       const acs = subId ? acsBySub.get(subId) : undefined;
-      return {
-        id: String(d.id),
+      const key = subId ? `sub:${subId}` : `dev:${d.id}`;
+      rows.set(key, {
+        id: key,
         deviceId: String(d.id),      // hapus dari monitoring
         acsId: acs?.id ?? null,       // aksi WiFi/refresh/reboot (bila lapor TR-069)
         serial: d.serialNumber,
-        model: acs ? [acs.manufacturer, acs.model ?? acs.software].filter(Boolean).join(' ') : null,
+        model: acs ? acsModel(acs) : null,
+        ssid: acs?.ssid ?? null,
+        ip: acs?.ip ?? null,
+        lastInform: acs?.lastInform ?? null,
         customerName: s?.customer?.fullName ?? null,
         pppoeUser: s?.pppoeUser ?? null,
         rxPower: d.lastRxPower != null ? Number(d.lastRxPower) : null,
         opticalHealth: classify(d),
         online: acs ? acs.online : d.lastStatus === 'online',
-      };
-    });
-  }
-
-  /**
-   * Daftar perangkat TR-069 (GenieACS) diperkaya nama pelanggan.
-   * Pelanggan dicari via IP WAN → sesi PPPoE aktif → user PPPoE → langganan.
-   */
-  async listAcsWithCustomer() {
-    const acsDevices = await this.listDevices(); // biarkan error muncul bila ACS bermasalah
-
-    // Peta IP → user PPPoE dari semua router online.
-    const ipToUser = new Map<string, string>();
-    const onlineRouters = await this.routers.find({ where: { status: 'online' } });
-    await Promise.all(
-      onlineRouters.map(async (r) => {
-        try {
-          for (const s of await this.mikrotik.listActive(r)) {
-            if (s.address) ipToUser.set(String(s.address), String(s.name));
-          }
-        } catch { /* skip */ }
-      }),
-    );
-
-    const allSubs = await this.subs.find({ relations: { customer: true } });
-    const userToSub = new Map<string, { name: string; pppoeUser: string }>();
-    for (const s of allSubs) {
-      if (s.pppoeUser) {
-        userToSub.set(s.pppoeUser.toLowerCase(), {
-          name: s.customer?.fullName ?? s.pppoeUser,
-          pppoeUser: s.pppoeUser,
-        });
-      }
+      });
     }
 
-    return acsDevices.map((a) => {
+    // 2) Perangkat TR-069 yang BELUM terwakili baris OLT (mis. ONU tanpa Scan).
+    const usedAcs = new Set(
+      [...rows.values()].map((r) => r.acsId).filter(Boolean) as string[],
+    );
+    for (const a of acsDevices) {
+      if (usedAcs.has(a.id)) continue;
       const user = a.ip ? ipToUser.get(a.ip) : undefined;
       const sub = user ? userToSub.get(user.toLowerCase()) : undefined;
-      return {
-        id: a.id,
+      const key = sub ? `sub:${sub.subId}` : `acs:${a.id}`;
+      const existing = rows.get(key);
+      if (existing) {
+        // Lengkapi baris OLT sub yang sama dengan data ACS.
+        if (!existing.acsId) {
+          existing.acsId = a.id;
+          existing.model = acsModel(a);
+          existing.ssid = a.ssid;
+          existing.ip = a.ip;
+          existing.lastInform = a.lastInform;
+        }
+        continue;
+      }
+      const s = sub ? subById.get(sub.subId) : undefined;
+      rows.set(key, {
+        id: key,
+        deviceId: null,
         acsId: a.id,
         serial: a.serial,
-        model: [a.manufacturer, a.model ?? a.software].filter(Boolean).join(' ') || null,
+        model: acsModel(a),
         ssid: a.ssid,
         ip: a.ip,
         lastInform: a.lastInform,
+        customerName: s?.customer?.fullName ?? sub?.name ?? null,
+        pppoeUser: s?.pppoeUser ?? user ?? null,
+        rxPower: null,
+        opticalHealth: null,
         online: a.online,
-        customerName: sub?.name ?? null,
-        pppoeUser: sub?.pppoeUser ?? null,
-      };
-    });
+      });
+    }
+
+    return [...rows.values()];
   }
 
   /** URL NBI + header auth efektif (DB dulu, env fallback). */
@@ -372,7 +374,6 @@ export class GenieacsController {
   constructor(private readonly service: GenieacsService) {}
 
   @Get('devices') list() { return this.service.listDevicesWithCustomer(); }
-  @Get('acs') listAcs() { return this.service.listAcsWithCustomer(); }
   @Get('devices/:id') get(@Param('id') id: string) { return this.service.getDevice(id); }
 
   @Post('devices/:id/wifi')

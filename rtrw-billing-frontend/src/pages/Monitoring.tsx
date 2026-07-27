@@ -36,7 +36,6 @@ export default function Monitoring() {
       <h1 className="text-xl font-semibold">Monitoring ONU</h1>
 
       <GenieacsPanel />
-      <AcsPanel />
 
       {canManage && (
         <div className="grid gap-5 lg:grid-cols-2">
@@ -73,6 +72,7 @@ function GenieacsPanel() {
   const qc = useQueryClient();
   const canControl = useCan('monitoring.control');
   const [setupFor, setSetupFor] = useState<AcsDevice | null>(null);
+  const [wifiFor, setWifiFor] = useState<AcsDevice | null>(null);
 
   const { data, isLoading, refetch, isFetching } = useQuery<AcsDevice[]>({
     queryKey: ['genieacs-devices'],
@@ -81,8 +81,22 @@ function GenieacsPanel() {
     refetchInterval: 60000,
   });
 
+  const act = useMutation({
+    mutationFn: ({ id, op }: { id: string; op: 'reboot' | 'refresh' }) =>
+      api.post(`/genieacs/devices/${encodeURIComponent(id)}/${op}`),
+    onSuccess: (_r, v) => {
+      qc.invalidateQueries({ queryKey: ['genieacs-devices'] });
+      alert(v.op === 'reboot' ? 'Perintah reboot dikirim ke ONU.' : 'Refresh diminta — data diperbarui saat ONU inform.');
+    },
+    onError: (e: any) => alert(`Gagal: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
+  });
   const delDevice = useMutation({
     mutationFn: (id: string) => api.delete(`/monitoring/devices/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['genieacs-devices'] }),
+    onError: (e: any) => alert(`Gagal hapus: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
+  });
+  const delAcs = useMutation({
+    mutationFn: (id: string) => api.delete(`/genieacs/devices/${encodeURIComponent(id)}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['genieacs-devices'] }),
     onError: (e: any) => alert(`Gagal hapus: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
   });
@@ -98,8 +112,9 @@ function GenieacsPanel() {
         </button>
       </div>
       <p className="mb-3 text-xs text-slate-400">
-        ONU yang di-Scan &amp; Daftarkan. Pelanggan terdeteksi otomatis via <b>user PPPoE</b>
-        (beri nama ONU di OLT dgn user PPPoE-nya). Redaman (RX) dari polling OLT.
+        ONU dari OLT (redaman) &amp; TR-069 (WiFi) dalam satu daftar, digabung per
+        pelanggan. Pelanggan terdeteksi otomatis via <b>user PPPoE</b> — atau kaitkan
+        manual lewat tombol Pengaturan. Redaman (RX) dari OLT; SSID/IP &amp; kontrol WiFi dari ACS.
       </p>
 
       {isLoading && <p className="text-sm text-slate-400 py-4 text-center">Memuat…</p>}
@@ -112,6 +127,8 @@ function GenieacsPanel() {
                 <th className="px-3 py-2 font-medium">ONU</th>
                 <th className="px-3 py-2 font-medium">Pelanggan</th>
                 <th className="px-3 py-2 font-medium">Redaman (dBm)</th>
+                <th className="px-3 py-2 font-medium">SSID</th>
+                <th className="px-3 py-2 font-medium">IP WAN</th>
                 <th className="px-3 py-2 font-medium">Status</th>
                 {canControl && <th className="px-3 py-2 font-medium text-right">Aksi</th>}
               </tr>
@@ -132,6 +149,8 @@ function GenieacsPanel() {
                   <td className={`px-3 py-2 ${dbmTone(d.rxPower ?? null)}`}>
                     {d.rxPower != null ? d.rxPower.toFixed(2) : '—'}
                   </td>
+                  <td className="px-3 py-2 text-xs">{d.ssid ?? '—'}</td>
+                  <td className="px-3 py-2 font-mono text-xs">{d.ip ?? '—'}</td>
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap gap-1">
                       {d.opticalHealth
@@ -146,135 +165,26 @@ function GenieacsPanel() {
                   {canControl && (
                     <td className="px-3 py-2">
                       <div className="flex justify-end gap-1">
-                        <button className="btn-ghost" title="Pengaturan ONU (kaitkan pelanggan)" onClick={() => setSetupFor(d)}><Settings size={15} /></button>
-                        <button className="btn-ghost text-slate-400 hover:text-rose-600" title="Hapus ONU dari monitoring"
-                          disabled={delDevice.isPending}
-                          onClick={() => { if (confirm(`Hapus ONU ${d.serial ?? ''} dari monitoring? (bisa didaftarkan lagi lewat Scan)`)) delDevice.mutate(d.deviceId!); }}>
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              ))}
-              {!data.length && (
-                <tr><td colSpan={canControl ? 5 : 4} className="px-3 py-6 text-center text-slate-400">
-                  Belum ada ONU. Klik <b>Scan</b> di bawah lalu <b>Daftarkan</b>.
-                </td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {setupFor && <OnuSetupModal device={setupFor} onClose={() => setSetupFor(null)}
-        onSaved={() => { setSetupFor(null); qc.invalidateQueries({ queryKey: ['genieacs-devices'] }); }} />}
-    </div>
-  );
-}
-
-/* -------------------- ACS (TR-069 / GenieACS) -------------------- */
-function AcsPanel() {
-  const qc = useQueryClient();
-  const canControl = useCan('monitoring.control');
-  const [wifiFor, setWifiFor] = useState<AcsDevice | null>(null);
-
-  const { data, isLoading, error, refetch, isFetching } = useQuery<AcsDevice[]>({
-    queryKey: ['genieacs-acs'],
-    queryFn: async () => (await api.get('/genieacs/acs')).data,
-    retry: false,
-    refetchInterval: 60000,
-  });
-
-  const act = useMutation({
-    mutationFn: ({ id, op }: { id: string; op: 'reboot' | 'refresh' }) =>
-      api.post(`/genieacs/devices/${encodeURIComponent(id)}/${op}`),
-    onSuccess: (_r, v) => {
-      qc.invalidateQueries({ queryKey: ['genieacs-acs'] });
-      alert(v.op === 'reboot' ? 'Perintah reboot dikirim ke ONU.' : 'Refresh diminta — data diperbarui saat ONU inform.');
-    },
-    onError: (e: any) => alert(`Gagal: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
-  });
-  const del = useMutation({
-    mutationFn: (id: string) => api.delete(`/genieacs/devices/${encodeURIComponent(id)}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['genieacs-acs'] }),
-    onError: (e: any) => alert(`Gagal hapus: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
-  });
-
-  return (
-    <div className="card p-5">
-      <div className="flex items-center justify-between mb-1">
-        <h2 className="flex items-center gap-2 font-medium">
-          <Wifi size={16} /> ACS (TR-069)
-        </h2>
-        <button className="btn-ghost text-sm" onClick={() => refetch()} disabled={isFetching} title="Refresh daftar">
-          {isFetching ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-        </button>
-      </div>
-      <p className="mb-3 text-xs text-slate-400">
-        Perangkat yang lapor ke GenieACS (TR-069). Pelanggan dicocokkan via IP WAN →
-        sesi PPPoE. Ubah SSID/password WiFi, refresh, atau reboot dari sini.
-      </p>
-
-      {isLoading && <p className="text-sm text-slate-400 py-4 text-center">Memuat…</p>}
-
-      {error != null && (
-        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
-          GenieACS belum terkonfigurasi / tak terjangkau. Isi URL di menu
-          <strong> Pengaturan → Integrasi</strong> dan arahkan ONU ke ACS
-          <code className="bg-amber-100 px-1 rounded"> http://IP-SERVER:7547</code>.
-        </div>
-      )}
-
-      {data && (
-        <div className="max-h-96 overflow-auto rounded-lg border border-slate-100">
-          <table className="min-w-full text-sm">
-            <thead className="sticky top-0 bg-slate-50 text-left text-slate-500">
-              <tr>
-                <th className="px-3 py-2 font-medium">Perangkat</th>
-                <th className="px-3 py-2 font-medium">Pelanggan</th>
-                <th className="px-3 py-2 font-medium">SSID</th>
-                <th className="px-3 py-2 font-medium">IP WAN</th>
-                <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 font-medium">Terakhir Lapor</th>
-                {canControl && <th className="px-3 py-2 font-medium text-right">Aksi</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {data.map((d) => (
-                <tr key={d.id} className="hover:bg-slate-50">
-                  <td className="px-3 py-2">
-                    <div className="font-mono text-xs">{d.serial ?? '—'}</div>
-                    {d.model && <div className="text-xs text-slate-400">{d.model}</div>}
-                  </td>
-                  <td className="px-3 py-2">
-                    {d.customerName
-                      ? <span className="text-slate-700">{d.customerName}</span>
-                      : <span className="text-xs text-slate-400">— tak terdeteksi —</span>}
-                    {d.pppoeUser && <div className="text-xs text-slate-400 font-mono">{d.pppoeUser}</div>}
-                  </td>
-                  <td className="px-3 py-2 text-xs">{d.ssid ?? '—'}</td>
-                  <td className="px-3 py-2 font-mono text-xs">{d.ip ?? '—'}</td>
-                  <td className="px-3 py-2">
-                    <span className={`badge ${d.online ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                      {d.online ? 'online' : 'offline'}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-xs text-slate-500">
-                    {d.lastInform ? new Date(d.lastInform).toLocaleString('id-ID') : '—'}
-                  </td>
-                  {canControl && (
-                    <td className="px-3 py-2">
-                      <div className="flex justify-end gap-1">
-                        <button className="btn-ghost text-brand-600" title="Ubah WiFi" onClick={() => setWifiFor(d)}><Wifi size={15} /></button>
-                        <button className="btn-ghost" title="Refresh data ONU" disabled={act.isPending} onClick={() => act.mutate({ id: d.acsId!, op: 'refresh' })}><RotateCw size={15} /></button>
-                        <button className="btn-ghost text-rose-600" title="Reboot ONU" disabled={act.isPending}
-                          onClick={() => { if (confirm(`Reboot ONU ${d.serial ?? d.acsId}?`)) act.mutate({ id: d.acsId!, op: 'reboot' }); }}>
-                          <Power size={15} />
-                        </button>
-                        <button className="btn-ghost text-slate-400 hover:text-rose-600" title="Hapus dari GenieACS"
-                          disabled={del.isPending}
-                          onClick={() => { if (confirm(`Hapus ${d.serial ?? d.acsId} dari GenieACS? (muncul lagi bila masih inform)`)) del.mutate(d.acsId!); }}>
+                        {d.deviceId && <button className="btn-ghost" title="Pengaturan ONU (kaitkan pelanggan)" onClick={() => setSetupFor(d)}><Settings size={15} /></button>}
+                        {d.acsId && (
+                          <>
+                            <button className="btn-ghost text-brand-600" title="Ubah WiFi" onClick={() => setWifiFor(d)}><Wifi size={15} /></button>
+                            <button className="btn-ghost" title="Refresh data ONU" disabled={act.isPending} onClick={() => act.mutate({ id: d.acsId!, op: 'refresh' })}><RotateCw size={15} /></button>
+                            <button className="btn-ghost text-rose-600" title="Reboot ONU" disabled={act.isPending}
+                              onClick={() => { if (confirm(`Reboot ONU ${d.serial ?? d.acsId}?`)) act.mutate({ id: d.acsId!, op: 'reboot' }); }}>
+                              <Power size={15} />
+                            </button>
+                          </>
+                        )}
+                        <button className="btn-ghost text-slate-400 hover:text-rose-600" title="Hapus ONU dari daftar"
+                          disabled={delDevice.isPending || delAcs.isPending}
+                          onClick={() => {
+                            if (d.deviceId) {
+                              if (confirm(`Hapus ONU ${d.serial ?? ''} dari monitoring? (bisa didaftarkan lagi lewat Scan)`)) delDevice.mutate(d.deviceId!);
+                            } else if (d.acsId) {
+                              if (confirm(`Hapus ${d.serial ?? d.acsId} dari GenieACS? (muncul lagi bila masih inform)`)) delAcs.mutate(d.acsId!);
+                            }
+                          }}>
                           <Trash2 size={15} />
                         </button>
                       </div>
@@ -284,7 +194,8 @@ function AcsPanel() {
               ))}
               {!data.length && (
                 <tr><td colSpan={canControl ? 7 : 6} className="px-3 py-6 text-center text-slate-400">
-                  Belum ada perangkat TR-069. Arahkan ONU ke ACS <code>http://IP-SERVER:7547</code>.
+                  Belum ada ONU. Klik <b>Scan</b> di bawah lalu <b>Daftarkan</b>, atau arahkan
+                  ONU ke ACS <code>http://IP-SERVER:7547</code>.
                 </td></tr>
               )}
             </tbody>
@@ -292,8 +203,10 @@ function AcsPanel() {
         </div>
       )}
 
+      {setupFor && <OnuSetupModal device={setupFor} onClose={() => setSetupFor(null)}
+        onSaved={() => { setSetupFor(null); qc.invalidateQueries({ queryKey: ['genieacs-devices'] }); }} />}
       {wifiFor && <AcsWifiModal device={wifiFor} onClose={() => setWifiFor(null)}
-        onSaved={() => { setWifiFor(null); qc.invalidateQueries({ queryKey: ['genieacs-acs'] }); }} />}
+        onSaved={() => { setWifiFor(null); qc.invalidateQueries({ queryKey: ['genieacs-devices'] }); }} />}
     </div>
   );
 }
