@@ -127,9 +127,16 @@ export class GenieacsService {
     // TR-069 device di-index per langganan (via IP → user PPPoE → langganan),
     // hanya utk MEMPERKAYA baris ONU hasil Scan (aksi WiFi/reboot bila ada).
     const acsBySub = new Map<string, any>();
-    for (const a of acsDevices) {
+    // Cari langganan sebuah perangkat ACS: utamakan username PPPoE yang ONU
+    // laporkan sendiri (paling andal), fallback ke IP WAN → sesi PPPoE aktif.
+    const acsToSub = (a: any): { name: string; subId: string } | undefined => {
+      const byUser = a.pppUser ? userToSub.get(String(a.pppUser).toLowerCase()) : undefined;
+      if (byUser) return byUser;
       const user = a.ip ? ipToUser.get(a.ip) : undefined;
-      const sub = user ? userToSub.get(user.toLowerCase()) : undefined;
+      return user ? userToSub.get(user.toLowerCase()) : undefined;
+    };
+    for (const a of acsDevices) {
+      const sub = acsToSub(a);
       if (sub && !acsBySub.has(sub.subId)) acsBySub.set(sub.subId, a);
     }
 
@@ -170,8 +177,7 @@ export class GenieacsService {
     );
     for (const a of acsDevices) {
       if (usedAcs.has(a.id)) continue;
-      const user = a.ip ? ipToUser.get(a.ip) : undefined;
-      const sub = user ? userToSub.get(user.toLowerCase()) : undefined;
+      const sub = acsToSub(a);
       const key = sub ? `sub:${sub.subId}` : `acs:${a.id}`;
       const existing = rows.get(key);
       if (existing) {
@@ -196,7 +202,7 @@ export class GenieacsService {
         ip: a.ip,
         lastInform: a.lastInform,
         customerName: s?.customer?.fullName ?? sub?.name ?? null,
-        pppoeUser: s?.pppoeUser ?? user ?? null,
+        pppoeUser: s?.pppoeUser ?? a.pppUser ?? null,
         rxPower: null,
         opticalHealth: null,
         online: a.online,
@@ -241,6 +247,7 @@ export class GenieacsService {
       'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID',
       'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress',
       'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.ExternalIPAddress',
+      'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username',
       'Device.WiFi.SSID.1.SSID',
     ].join(',');
     const { base, headers } = await this.client();
@@ -350,6 +357,8 @@ export class GenieacsService {
     const ip =
       this.val(d, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress') ??
       this.val(d, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.ExternalIPAddress');
+    const pppUser =
+      this.val(d, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username') ?? null;
     const lastInformMs = d._lastInform ? new Date(d._lastInform).getTime() : 0;
     return {
       id: d._id,
@@ -360,6 +369,7 @@ export class GenieacsService {
       software: this.val(d, 'InternetGatewayDevice.DeviceInfo.SoftwareVersion') ?? null,
       ssid,
       ip,
+      pppUser,
       lastInform: lastInformMs ? new Date(lastInformMs).toISOString() : null,
       online: lastInformMs ? Date.now() - lastInformMs < 10 * 60 * 1000 : false,
     };
