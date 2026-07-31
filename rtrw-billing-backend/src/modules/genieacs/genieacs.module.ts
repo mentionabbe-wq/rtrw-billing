@@ -238,6 +238,27 @@ export class GenieacsService {
     return true;
   }
 
+  /**
+   * Cari nilai parameter `keyName` (mis. "Username"/"ExternalIPAddress") di mana
+   * pun dalam subtree device, opsional hanya bila jalurnya memuat `parentContains`
+   * (mis. "WANPPPConnection"). Menghindari tebak-tebakan indeks instance.
+   */
+  private deepFind(obj: any, keyName: string, parentContains?: string, path = ''): any {
+    if (!obj || typeof obj !== 'object') return null;
+    for (const k of Object.keys(obj)) {
+      if (k.startsWith('_')) continue;
+      const child = obj[k];
+      const childPath = path ? `${path}.${k}` : k;
+      if (k === keyName && (!parentContains || path.includes(parentContains))) {
+        const v = child?._value;
+        if (v != null && v !== '') return v;
+      }
+      const found = this.deepFind(child, keyName, parentContains, childPath);
+      if (found != null) return found;
+    }
+    return null;
+  }
+
   async listDevices() {
     const projection = [
       '_id', '_deviceId', '_lastInform',
@@ -245,9 +266,10 @@ export class GenieacsService {
       'InternetGatewayDevice.DeviceInfo.ModelName',
       'InternetGatewayDevice.DeviceInfo.SoftwareVersion',
       'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID',
-      'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress',
-      'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.ExternalIPAddress',
-      'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username',
+      // Subtree WAN penuh: agar IP & Username PPPoE terbaca di indeks mana pun
+      // (mis. WANConnectionDevice.2.WANPPPConnection.1 pada sebagian ONU).
+      'InternetGatewayDevice.WANDevice',
+      'Device.PPP',
       'Device.WiFi.SSID.1.SSID',
     ].join(',');
     const { base, headers } = await this.client();
@@ -354,11 +376,14 @@ export class GenieacsService {
     const ssid =
       this.val(d, 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID') ??
       this.val(d, 'Device.WiFi.SSID.1.SSID');
-    const ip =
-      this.val(d, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress') ??
-      this.val(d, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.ExternalIPAddress');
+    // PPPoE diutamakan; bila WAN memakai PPPoE, IP publik ada di WANPPPConnection.
     const pppUser =
-      this.val(d, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username') ?? null;
+      this.deepFind(d, 'Username', 'WANPPPConnection') ??
+      this.deepFind(d, 'Username', 'PPP.Interface');
+    const ip =
+      this.deepFind(d, 'ExternalIPAddress', 'WANPPPConnection') ??
+      this.deepFind(d, 'ExternalIPAddress', 'WANIPConnection') ??
+      this.val(d, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress');
     const lastInformMs = d._lastInform ? new Date(d._lastInform).getTime() : 0;
     return {
       id: d._id,
