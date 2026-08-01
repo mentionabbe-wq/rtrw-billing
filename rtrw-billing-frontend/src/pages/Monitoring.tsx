@@ -267,14 +267,16 @@ function OnuSetupModal({ device, onClose, onSaved }: { device: AcsDevice; onClos
 }
 
 function AcsWifiModal({ device, onClose, onSaved }: { device: AcsDevice; onClose: () => void; onSaved: () => void }) {
+  // id GenieACS ada di acsId (id baris bisa berupa kunci gabungan "sub:.." / "dev:..").
+  const acsId = device.acsId ?? device.id;
   const { data: detail, isLoading } = useQuery<AcsDetail>({
-    queryKey: ['acs-device', device.id],
-    queryFn: async () => (await api.get(`/genieacs/devices/${encodeURIComponent(device.id)}`)).data,
+    queryKey: ['acs-device', acsId],
+    queryFn: async () => (await api.get(`/genieacs/devices/${encodeURIComponent(acsId)}`)).data,
     retry: false,
   });
   const save = useMutation({
     mutationFn: (body: { ssid?: string; password?: string }) =>
-      api.post(`/genieacs/devices/${encodeURIComponent(device.id)}/wifi`, body),
+      api.post(`/genieacs/devices/${encodeURIComponent(acsId)}/wifi`, body),
     onSuccess: () => { alert('Perintah ubah WiFi dikirim ke ONU.'); onSaved(); },
     onError: (e: any) => alert(`Gagal: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
   });
@@ -283,7 +285,7 @@ function AcsWifiModal({ device, onClose, onSaved }: { device: AcsDevice; onClose
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
       <div className="card w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-semibold">Ubah WiFi — {device.serial ?? device.id}</h2>
+          <h2 className="font-semibold">Ubah WiFi — {device.serial ?? acsId}</h2>
           <button className="btn-ghost" onClick={onClose}><X size={18} /></button>
         </div>
         {isLoading ? (
