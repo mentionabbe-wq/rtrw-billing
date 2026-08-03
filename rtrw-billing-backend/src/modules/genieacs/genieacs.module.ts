@@ -294,13 +294,34 @@ export class GenieacsService {
     };
   }
 
-  /** Ubah SSID dan/atau password WiFi via task setParameterValues. */
+  /**
+   * Ubah SSID dan/atau password WiFi via setParameterValues.
+   * Diterapkan ke instance primer (WLANConfiguration.1) DAN semua band lain
+   * yang saat ini bernama SAMA (mis. 5GHz di instance berbeda) agar perubahan
+   * benar-benar terlihat di semua band; jaringan guest/berbeda nama dibiarkan.
+   */
   async setWifi(id: string, ssid?: string, password?: string) {
     const d = await this.fetchOne(id);
-    const w = this.resolveWifi(d);
+    const all = this.wifiInstances(d);
+    const primary = this.resolveWifi(d);
+    if (!all.length && !primary.ssidPath) {
+      throw new BadRequestException('Tidak ada parameter WiFi yang bisa diset pada device ini.');
+    }
+
+    // Nama primer sekarang → target semua band yang bernama sama.
+    const primaryCur = primary.ssidPath ? this.val(d, primary.ssidPath) : null;
+    let targets = all.filter((i) => primaryCur != null && i.current === primaryCur);
+    if (!targets.length) {
+      // Fallback: minimal instance primer (atau instance pertama yg ada).
+      targets = all.filter((i) => i.ssidPath === primary.ssidPath);
+      if (!targets.length && all.length) targets = [all[0]];
+    }
+
     const params: any[] = [];
-    if (ssid && w.ssidPath) params.push([w.ssidPath, ssid, 'xsd:string']);
-    if (password && w.passPath) params.push([w.passPath, password, 'xsd:string']);
+    for (const t of targets) {
+      if (ssid) params.push([t.ssidPath, ssid, 'xsd:string']);
+      if (password && t.passPath) params.push([t.passPath, password, 'xsd:string']);
+    }
     if (!params.length) throw new BadRequestException('Tidak ada parameter WiFi yang bisa diset pada device ini.');
     await this.task(id, { name: 'setParameterValues', parameterValues: params });
     return { id, updated: params.map((p) => p[0]) };
@@ -350,6 +371,36 @@ export class GenieacsService {
       const txt = await res.text().catch(() => '');
       throw new BadRequestException(`GenieACS task gagal (${res.status}) ${txt}`.trim());
     }
+  }
+
+  /**
+   * Semua instance WiFi (2.4/5GHz + guest) beserta SSID sekarang & path
+   * SSID/password-nya. Dipakai agar perubahan bisa diterapkan ke semua band
+   * yang saat ini bernama sama (band 5GHz kerap di instance berbeda).
+   */
+  private wifiInstances(d: any): { ssidPath: string; passPath: string | null; current: string | null }[] {
+    const out: { ssidPath: string; passPath: string | null; current: string | null }[] = [];
+    // TR-098: InternetGatewayDevice.LANDevice.N.WLANConfiguration.M
+    for (let ld = 1; ld <= 4; ld++) {
+      for (let w = 1; w <= 8; w++) {
+        const base = `InternetGatewayDevice.LANDevice.${ld}.WLANConfiguration.${w}`;
+        if (!this.has(d, `${base}.SSID`)) continue;
+        let passPath: string | null = null;
+        for (const cand of [`${base}.KeyPassphrase`, `${base}.PreSharedKey.1.KeyPassphrase`, `${base}.PreSharedKey.1.PreSharedKey`]) {
+          if (this.has(d, cand)) { passPath = cand; break; }
+        }
+        out.push({ ssidPath: `${base}.SSID`, passPath, current: this.val(d, `${base}.SSID`) });
+      }
+    }
+    // TR-181: Device.WiFi.SSID.M (+ AccessPoint.M.Security)
+    for (let m = 1; m <= 8; m++) {
+      const base = `Device.WiFi.SSID.${m}`;
+      if (!this.has(d, `${base}.SSID`)) continue;
+      const passPath = this.has(d, `Device.WiFi.AccessPoint.${m}.Security.KeyPassphrase`)
+        ? `Device.WiFi.AccessPoint.${m}.Security.KeyPassphrase` : null;
+      out.push({ ssidPath: `${base}.SSID`, passPath, current: this.val(d, `${base}.SSID`) });
+    }
+    return out;
   }
 
   private resolveWifi(d: any): { ssidPath: string | null; passPath: string | null } {
