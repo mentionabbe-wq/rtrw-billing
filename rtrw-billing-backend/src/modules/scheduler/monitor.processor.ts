@@ -68,10 +68,13 @@ export class MonitorProcessor extends WorkerHost {
       }
 
       const prevStatus = device.lastStatus;
-      const isLosReading = reading.dBm == null || reading.health === 'critical';
+      // LOS = benar-benar TIDAK ada sinyal (dBm null). Redaman lemah (health
+      // 'critical') TETAP ada sinyal & bisa lewatkan PPPoE — jangan disebut LOS,
+      // cukup tandai badge kritis (redaman jelek) dengan status online.
+      const noSignal = reading.dBm == null;
 
-      if (!isLosReading) {
-        // ── Pembacaan SEHAT → reset strike, status online ──
+      if (!noSignal) {
+        // ── Ada sinyal (normal/warning/kritis) → reset strike, status online ──
         const rx = reading.dBm!.toFixed(2);
         await this.metrics.save(this.metrics.create({ deviceId: device.id, rxPower: rx }));
         await this.devices.update(device.id, {
@@ -80,7 +83,9 @@ export class MonitorProcessor extends WorkerHost {
         this.gateway.emitOnuStatus({ deviceId: device.id, dBm: reading.dBm, health: reading.health });
 
         if (prevStatus === 'los' || prevStatus === 'offline') {
-          await this.wa.notifyAdmin(`🟢 ONU pulih: ${who()} — RX ${rx} dBm.`);
+          // Pulih dari LOS/offline; sebut bila redaman masih lemah.
+          const note = reading.health === 'critical' ? ' (redaman lemah, di bawah ambang)' : '';
+          await this.wa.notifyAdmin(`🟢 ONU pulih: ${who()} — RX ${rx} dBm${note}.`);
         }
         return;
       }

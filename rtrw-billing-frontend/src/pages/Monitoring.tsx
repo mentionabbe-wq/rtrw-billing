@@ -20,6 +20,11 @@ const healthTone: Record<string, string> = {
   warning: 'bg-amber-50 text-amber-700',
   critical: 'bg-rose-50 text-rose-700',
 };
+const healthLabel: Record<string, string> = {
+  ok: 'normal',
+  warning: 'lemah',
+  critical: 'kritis',
+};
 
 function dbmTone(dbm: number | null) {
   if (dbm == null) return 'text-slate-400';
@@ -155,7 +160,7 @@ function GenieacsPanel() {
                     <div className="flex flex-wrap gap-1">
                       {d.opticalHealth
                         ? <span className={`badge ${healthTone[d.opticalHealth] ?? 'bg-slate-100 text-slate-500'}`}>
-                            {d.opticalHealth === 'ok' ? 'normal' : d.opticalHealth}
+                            {healthLabel[d.opticalHealth] ?? d.opticalHealth}
                           </span>
                         : <span className={`badge ${d.online ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                             {d.online ? 'online' : 'offline'}
