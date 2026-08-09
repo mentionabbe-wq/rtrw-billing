@@ -91,8 +91,10 @@ export const VENDOR_PROFILES: Record<OltVendor, VendorProfile> = {
     adminStatusOid: '1.3.6.1.4.1.17409.2.8.4.1.1.3',
     adminUp: 1,
     adminDown: 2,
-    // Unit 0.01 dBm; -3000 (=-30 dBm) dipakai firmware sbg sentinel "tak ada data".
-    toDbm: (raw) => (NO_SIGNAL.includes(raw) || raw <= -3000 ? null : raw / 100),
+    // Unit 0.01 dBm. Hanya sentinel & nilai mustahil (< -35 dBm) yang dianggap
+    // "tak ada data". Jangan buang -30..-35 dBm: itu redaman LEMAH tapi ONU
+    // masih bisa online (kalau dibuang, ONU sehat-lemah salah tampil LOS/kosong).
+    toDbm: (raw) => (NO_SIGNAL.includes(raw) || raw < -3500 ? null : raw / 100),
     buildIndex: (ifIndex, onuId) => `${ifIndex}.0.${onuId}`,
     // .1.1.2 = label posisi (gpon 0/0/1 onu 1); .1.1.3 = deskripsi yang diisi operator.
     nameOid: '1.3.6.1.4.1.17409.2.8.4.1.1.2',
