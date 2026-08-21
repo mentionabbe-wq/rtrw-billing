@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, Loader2, MessageCircle, Receipt, Wallet } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { portalApi } from '@/lib/portalApi';
 import { appApi, errorMessage } from '@/lib/publicApi';
 import { rupiah, tanggal } from '@/lib/format';
@@ -25,6 +26,59 @@ interface PortalSettings {
   paymentInstructions: string | null;
   bankAccounts: { bank: string; accountNo: string; accountName: string }[];
   qrisImage: string | null;
+  /** true bila admin sudah memasang payload QRIS untuk QR nominal otomatis. */
+  qrisDynamic: boolean;
+}
+
+interface QrisResult {
+  available: boolean;
+  reason?: string;
+  payload?: string;
+  amount?: number;
+  invoiceNo?: string;
+  merchantName?: string | null;
+}
+
+/**
+ * QRIS dengan nominal tagihan sudah terisi — dibuat server dari payload QRIS
+ * statis merchant, jadi pelanggan tidak perlu mengetik nominal.
+ */
+function DynamicQris({ invoiceId }: { invoiceId: string }) {
+  const { data, isLoading, isError } = useQuery<QrisResult>({
+    queryKey: ['portal-invoice-qris', invoiceId],
+    queryFn: async () => (await portalApi.get(`/me/invoices/${invoiceId}/qris`)).data,
+    retry: false,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center gap-2 rounded-xl bg-slate-100 p-6 text-sm text-slate-500 dark:bg-white/5 dark:text-slate-400">
+        <Loader2 size={16} className="animate-spin" /> Menyiapkan QRIS…
+      </div>
+    );
+  }
+
+  // Tidak tersedia bukan kondisi error — pelanggan tetap bisa transfer bank.
+  if (isError || !data?.available || !data.payload) return null;
+
+  return (
+    <div className="rounded-xl border border-slate-200 p-4 text-center dark:border-white/10">
+      <p className="text-sm font-medium">Scan QRIS</p>
+      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+        Nominal sudah terisi otomatis — tidak perlu diketik.
+      </p>
+      <div className="mx-auto mt-3 w-fit rounded-xl bg-white p-3">
+        <QRCodeSVG value={data.payload} size={200} level="M" marginSize={2} />
+      </div>
+      <p className="mt-3 text-lg font-bold">{rupiah(data.amount ?? 0)}</p>
+      {data.merchantName && (
+        <p className="text-xs text-slate-500 dark:text-slate-400">{data.merchantName}</p>
+      )}
+      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+        Berlaku untuk tagihan {data.invoiceNo}. Semua aplikasi e-wallet & mobile banking.
+      </p>
+    </div>
+  );
 }
 
 /** "Tagihan Saya" (§17) + pembayaran manual/QRIS (gateway menyusul di Phase 2). */
@@ -215,6 +269,8 @@ function PayDialog({
         </div>
       ) : (
         <div className="space-y-4">
+          {invoice && <DynamicQris invoiceId={invoice.id} />}
+
           {settings?.bankAccounts?.length ? (
             <div className="space-y-2">
               <p className="text-sm font-medium">Transfer bank</p>
@@ -228,10 +284,14 @@ function PayDialog({
             </div>
           ) : null}
 
-          {settings?.qrisImage && (
+          {/* QRIS statis hanya dipakai bila QRIS dinamis belum disiapkan admin. */}
+          {settings?.qrisImage && !settings?.qrisDynamic && (
             <div>
               <p className="mb-2 text-sm font-medium">QRIS</p>
               <img src={settings.qrisImage} alt="QRIS" className="mx-auto w-56 rounded-xl border border-slate-200 dark:border-white/10" />
+              <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">
+                Masukkan nominal secara manual saat membayar.
+              </p>
             </div>
           )}
 

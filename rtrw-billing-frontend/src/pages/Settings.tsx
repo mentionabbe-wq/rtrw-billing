@@ -427,6 +427,9 @@ function PortalPanel() {
       {/* QRIS statis */}
       <QrisPanel data={data} onSave={(qrisImage) => save.mutate({ qrisImage })} saving={save.isPending} />
 
+      {/* QRIS dinamis (nominal otomatis) */}
+      <QrisDynamicPanel />
+
       {/* Bank accounts */}
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4">
@@ -1226,6 +1229,121 @@ function EditableList({
           <Plus size={15} /> Tambah
         </button>
       </div>
+    </div>
+  );
+}
+
+/* --------------------- QRIS dinamis (nominal otomatis) --------------------- */
+interface QrisPayloadInfo {
+  payload: string | null;
+  valid: boolean;
+  error?: string;
+  merchantName?: string;
+  merchantCity?: string;
+  dynamic?: boolean;
+}
+
+/**
+ * Menyimpan payload QRIS STATIS merchant. Dari payload itu setiap tagihan
+ * menghasilkan QR dengan nominal terisi otomatis — tanpa payment gateway.
+ */
+function QrisDynamicPanel() {
+  const qc = useQueryClient();
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery<QrisPayloadInfo>({
+    queryKey: ['qris-payload'],
+    queryFn: async () => (await api.get('/portal/settings/qris')).data,
+  });
+
+  const save = useMutation({
+    mutationFn: (qrisPayload: string | null) => api.patch('/portal/settings', { qrisPayload }),
+    onSuccess: () => {
+      setDraft(null);
+      qc.invalidateQueries({ queryKey: ['qris-payload'] });
+      qc.invalidateQueries({ queryKey: ['portal-settings'] });
+    },
+    onError: (e: any) =>
+      alert(e?.response?.data?.message ?? 'Payload QRIS ditolak. Periksa kembali hasil salinannya.'),
+  });
+
+  const value = draft ?? data?.payload ?? '';
+  const dirty = draft !== null && draft !== (data?.payload ?? '');
+
+  return (
+    <div className="card p-5">
+      <h3 className="mb-1 text-sm font-semibold text-slate-700">QRIS Dinamis (nominal otomatis)</h3>
+      <p className="mb-4 text-xs text-slate-400">
+        Tempel <strong>payload QRIS statis</strong> Anda (teks panjang diawali <code>00020101</code>),
+        bukan gambarnya. Cara mendapatkannya: pindai QRIS Anda sendiri dengan aplikasi pembaca QR
+        biasa lalu salin teksnya. Sistem akan membuat QR per tagihan dengan nominal sudah terisi,
+        uang tetap masuk ke rekening merchant yang sama.
+      </p>
+
+      {isLoading ? (
+        <p className="py-4 text-center text-sm text-slate-400">Memuat…</p>
+      ) : (
+        <div className="space-y-3">
+          <textarea
+            className="input font-mono text-xs"
+            rows={4}
+            value={value}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="00020101021126650013ID.CO.QRIS.WWW..."
+            spellCheck={false}
+          />
+
+          {data?.payload && !dirty && (
+            data.valid ? (
+              <div className="flex items-start gap-2 rounded-lg bg-emerald-50 p-3 text-xs text-emerald-700">
+                <CheckCircle2 size={15} className="mt-0.5 shrink-0" />
+                <span>
+                  Payload valid — merchant <strong>{data.merchantName ?? '(tanpa nama)'}</strong>
+                  {data.merchantCity ? `, ${data.merchantCity}` : ''}. QRIS per tagihan sudah aktif
+                  di portal pelanggan.
+                  {data.dynamic && ' Catatan: payload ini sudah bertipe dinamis; nominalnya akan ditimpa per tagihan.'}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 rounded-lg bg-rose-50 p-3 text-xs text-rose-700">
+                <XCircle size={15} className="mt-0.5 shrink-0" />
+                <span>{data.error ?? 'Payload tersimpan tidak valid.'}</span>
+              </div>
+            )
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="btn-primary text-sm"
+              disabled={!dirty || save.isPending}
+              onClick={() => save.mutate(draft?.trim() ? draft.trim() : null)}
+            >
+              {save.isPending && <Loader2 size={15} className="animate-spin" />} Simpan Payload
+            </button>
+            {dirty && (
+              <button className="btn-ghost text-sm" onClick={() => setDraft(null)}>Batal</button>
+            )}
+            {data?.payload && !dirty && (
+              <button
+                className="btn-ghost text-sm text-rose-600"
+                disabled={save.isPending}
+                onClick={() => {
+                  if (confirm('Hapus payload QRIS? Portal pelanggan kembali memakai QRIS statis.')) {
+                    save.mutate(null);
+                  }
+                }}
+              >
+                <Trash2 size={15} /> Hapus
+              </button>
+            )}
+          </div>
+
+          <p className="text-xs text-slate-400">
+            Pembayaran tetap perlu Anda verifikasi manual — tanpa payment gateway tidak ada webhook,
+            jadi status lunas &amp; buka isolir dilakukan lewat tombol Bayar di menu Tagihan.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

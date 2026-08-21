@@ -8,10 +8,18 @@ import { PortalService } from './portal.service';
 export class PortalController {
   constructor(private readonly svc: PortalService) {}
 
-  /** Public — dibaca oleh halaman captive portal tanpa login */
+  /** Public — dibaca oleh halaman captive portal & landing tanpa login */
   @Get('settings')
   getSettings() {
-    return this.svc.get();
+    return this.svc.getPublic();
+  }
+
+  /** Admin — payload QRIS statis merchant (sumber QRIS dinamis per tagihan). */
+  @Get('settings/qris')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  getQris() {
+    return this.svc.getQris();
   }
 
   /** Public — pelanggan konfirmasi sudah bayar + bukti transfer (opsional). */

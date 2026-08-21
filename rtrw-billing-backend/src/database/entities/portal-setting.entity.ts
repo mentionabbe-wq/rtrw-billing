@@ -39,6 +39,14 @@ export class PortalSetting {
   @Column({ name: 'qris_image', type: 'text', nullable: true })
   qrisImage: string | null;
 
+  /**
+   * Payload QRIS STATIS merchant (string EMVCo `00020101021126…`). Dipakai
+   * membuat QRIS dinamis per tagihan — nominal terisi otomatis, tanpa payment
+   * gateway. Tidak ikut dikirim pada endpoint pengaturan publik.
+   */
+  @Column({ name: 'qris_payload', type: 'text', nullable: true })
+  qrisPayload: string | null;
+
   // ── Konten landing page publik (Phase 1) ──────────────────────────────────
 
   @Column({ name: 'hero_title', type: 'varchar', nullable: true })

@@ -6,6 +6,7 @@ import {
 } from '@database/entities';
 import { CryptoService } from '@common/crypto/crypto.service';
 import { maskEmail, maskPhone, normalizePhone } from '@common/security/phone.util';
+import { buildDynamicQris, inspectQris } from '@common/qris/qris.util';
 import { MikrotikService } from '@modules/mikrotik/mikrotik.service';
 import { UpdateProfileDto } from './dto/customer-auth.dto';
 
@@ -303,6 +304,37 @@ export class CustomerAccountService {
         paidAt: p.paidAt,
       })),
     };
+  }
+
+  /**
+   * QRIS dinamis untuk satu tagihan: nominal sudah terisi sehingga pelanggan
+   * tidak bisa salah ketik. Dibuat dari payload QRIS statis merchant, tanpa
+   * payment gateway — karena itu pelunasan tetap diverifikasi admin.
+   */
+  async invoiceQris(customerId: string, invoiceId: string) {
+    // Memakai invoiceDetail agar pemeriksaan kepemilikan tetap satu jalur.
+    const invoice = await this.invoiceDetail(customerId, invoiceId);
+    if (invoice.status === 'paid' || invoice.status === 'void') {
+      return { available: false, reason: 'Tagihan ini sudah tidak perlu dibayar.' };
+    }
+
+    const settings = await this.settings.findOne({ where: { id: 1 } });
+    if (!settings?.qrisPayload) {
+      return { available: false, reason: 'Pembayaran QRIS otomatis belum diaktifkan admin.' };
+    }
+
+    try {
+      return {
+        available: true,
+        payload: buildDynamicQris(settings.qrisPayload, invoice.amount),
+        amount: invoice.amount,
+        invoiceNo: invoice.invoiceNo,
+        merchantName: inspectQris(settings.qrisPayload).merchantName ?? null,
+      };
+    } catch (e) {
+      this.logger.warn(`gagal membuat QRIS dinamis: ${(e as Error).message}`);
+      return { available: false, reason: 'QRIS belum dapat dibuat. Silakan pakai transfer bank.' };
+    }
   }
 
   async paymentHistory(customerId: string) {

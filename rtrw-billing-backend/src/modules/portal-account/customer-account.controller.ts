@@ -47,6 +47,12 @@ export class CustomerAccountController {
     return this.account.invoiceDetail(actor.customerId, id);
   }
 
+  /** QRIS dinamis untuk satu tagihan (nominal terisi otomatis). */
+  @Get('invoices/:id/qris')
+  invoiceQris(@Portal() actor: PortalActor, @Param('id') id: string) {
+    return this.account.invoiceQris(actor.customerId, id);
+  }
+
   @Get('payments')
   payments(@Portal() actor: PortalActor) {
     return this.account.paymentHistory(actor.customerId);

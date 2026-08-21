@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Customer, Invoice, PortalSetting, Subscription } from '@database/entities';
 import { WhatsappService } from '@modules/whatsapp/whatsapp.module';
+import { inspectQris } from '@common/qris/qris.util';
 
 const rupiah = (v: string) =>
   new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(v));
@@ -80,7 +81,35 @@ export class PortalService {
     return row;
   }
 
+  /**
+   * Versi untuk endpoint PUBLIK: payload QRIS mentah tidak ikut dikirim
+   * (cukup penanda tersedia/tidak), supaya tidak bisa dipanen bot.
+   */
+  async getPublic(): Promise<Omit<PortalSetting, 'qrisPayload'> & { qrisDynamic: boolean }> {
+    const { qrisPayload, ...rest } = await this.get();
+    return { ...rest, qrisDynamic: !!qrisPayload };
+  }
+
+  /** Payload QRIS + hasil pemeriksaannya — hanya untuk admin. */
+  async getQris() {
+    const row = await this.get();
+    if (!row.qrisPayload) return { payload: null, valid: false as const };
+    return { payload: row.qrisPayload, ...inspectQris(row.qrisPayload) };
+  }
+
   async update(dto: Partial<Omit<PortalSetting, 'id'>>): Promise<PortalSetting> {
+    // Payload QRIS diperiksa di sini agar salah salin ketahuan saat menyimpan,
+    // bukan saat pelanggan gagal memindai.
+    if (dto.qrisPayload !== undefined) {
+      const raw = (dto.qrisPayload ?? '').replace(/\s+/g, '');
+      if (!raw) {
+        dto.qrisPayload = null;
+      } else {
+        const info = inspectQris(raw);
+        if (!info.valid) throw new BadRequestException(info.error ?? 'Payload QRIS tidak valid.');
+        dto.qrisPayload = raw;
+      }
+    }
     await this.repo.upsert({ id: 1, ...dto }, ['id']);
     return this.get();
   }
