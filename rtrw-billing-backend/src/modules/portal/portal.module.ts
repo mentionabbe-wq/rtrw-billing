@@ -18,5 +18,6 @@ import { CustomerPortalService } from './customer-portal.service';
   ],
   controllers: [PortalController, CustomerPortalController],
   providers: [PortalService, CustomerPortalService],
+  exports: [CustomerPortalService],
 })
 export class PortalModule {}

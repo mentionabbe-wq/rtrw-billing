@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   Customer, Subscription, Invoice, DeviceMetric, Device, Router, Payment, HotspotVoucher,
+  CustomerRequest,
 } from '@database/entities';
 import { JwtAuthGuard } from '@modules/auth/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
@@ -22,6 +23,7 @@ export class DashboardService {
     @InjectRepository(Router) private readonly routers: Repository<Router>,
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     @InjectRepository(HotspotVoucher) private readonly vouchers: Repository<HotspotVoucher>,
+    @InjectRepository(CustomerRequest) private readonly leads: Repository<CustomerRequest>,
     private readonly mikrotik: MikrotikService,
   ) {}
 
@@ -122,13 +124,15 @@ export class DashboardService {
   }
 
   async stats() {
-    const [totalCustomers, active, suspended, unpaidInvoices, onuActive] = await Promise.all([
-      this.customers.count(),
-      this.subs.count({ where: { status: 'active' } }),
-      this.subs.count({ where: { status: 'suspended' } }),
-      this.invoices.count({ where: { status: 'unpaid' } }),
-      this.devices.count({ where: { lastStatus: 'online' } }),
-    ]);
+    const [totalCustomers, active, suspended, unpaidInvoices, onuActive, pendingLeads] =
+      await Promise.all([
+        this.customers.count(),
+        this.subs.count({ where: { status: 'active' } }),
+        this.subs.count({ where: { status: 'suspended' } }),
+        this.invoices.count({ where: { status: 'unpaid' } }),
+        this.devices.count({ where: { lastStatus: 'online' } }),
+        this.leads.count({ where: { status: 'pending' } }),
+      ]);
 
     // PPPoE aktif live — hanya router yang berstatus online (cepat & tak hang).
     let pppoeActive = 0;
@@ -156,6 +160,8 @@ export class DashboardService {
       unpaidInvoices,
       onuActive,
       pppoeActive,
+      /** Pendaftaran dari landing page yang belum ditindaklanjuti (Phase 1). */
+      pendingLeads,
       trafficSeries: raw.reverse().map((r) => ({ t: r.t, mbps: Math.round(Number(r.mbps)) })),
     };
   }
@@ -191,6 +197,7 @@ export class DashboardController {
   imports: [
     TypeOrmModule.forFeature([
       Customer, Subscription, Invoice, DeviceMetric, Device, Router, Payment, HotspotVoucher,
+      CustomerRequest,
     ]),
     MikrotikModule,
   ],

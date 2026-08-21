@@ -8,6 +8,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import configuration from '@config/configuration';
 import { ALL_ENTITIES } from '@database/entities';
 import { CryptoModule } from '@common/crypto/crypto.module';
+import { SecurityModule } from '@common/security/security.module';
 import { MonitoringModule } from '@modules/monitoring/monitoring.module';
 import { AuthModule } from '@modules/auth/auth.module';
 import { CustomersModule } from '@modules/customers/customers.module';
@@ -30,6 +31,9 @@ import { PaymentWebhookModule } from '@modules/billing/payment-webhook.module';
 import { IntegrationsModule } from '@modules/integrations/integrations.module';
 import { BackupModule } from '@modules/backup/backup.module';
 import { MapModule } from '@modules/map/map.module';
+import { PortalAccountModule } from '@modules/portal-account/portal-account.module';
+import { PublicModule } from '@modules/public/public.module';
+import { OnboardingModule } from '@modules/onboarding/onboarding.module';
 
 @Module({
   imports: [
@@ -66,6 +70,7 @@ import { MapModule } from '@modules/map/map.module';
     }),
 
     CryptoModule,
+    SecurityModule,
     IntegrationsModule,
     MonitoringModule,
     AuthModule,
@@ -88,6 +93,10 @@ import { MapModule } from '@modules/map/map.module';
     PaymentWebhookModule,
     BackupModule,
     MapModule,
+    // Phase 1 — portal pelanggan & landing page publik
+    PortalAccountModule,
+    PublicModule,
+    OnboardingModule,
   ],
 })
 export class AppModule {}

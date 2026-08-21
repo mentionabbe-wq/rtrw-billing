@@ -1,6 +1,6 @@
 import { FormEvent, ReactNode, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Loader2, X, Trash2, Pencil, PlugZap, Server, Network, Globe, ExternalLink, CreditCard, MessageCircle, CheckCircle2, XCircle, Database, Download } from 'lucide-react';
+import { Plus, Loader2, X, Trash2, Pencil, PlugZap, Server, Network, Globe, ExternalLink, CreditCard, MessageCircle, CheckCircle2, XCircle, Database, Download, Megaphone } from 'lucide-react';
 import { api } from '@/lib/api';
 
 interface Router {
@@ -19,7 +19,9 @@ const statusTone: Record<string, string> = {
 };
 
 export default function Settings() {
-  const [tab, setTab] = useState<'routers' | 'olts' | 'portal' | 'integrations' | 'backup'>('routers');
+  const [tab, setTab] = useState<
+    'routers' | 'olts' | 'portal' | 'landing' | 'integrations' | 'backup'
+  >('routers');
 
   return (
     <div className="space-y-5">
@@ -44,6 +46,12 @@ export default function Settings() {
           <Globe size={15} className="mr-1 inline" /> Portal Bayar
         </button>
         <button
+          className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === 'landing' ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500'}`}
+          onClick={() => setTab('landing')}
+        >
+          <Megaphone size={15} className="mr-1 inline" /> Landing & Portal Pelanggan
+        </button>
+        <button
           className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === 'integrations' ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500'}`}
           onClick={() => setTab('integrations')}
         >
@@ -59,6 +67,7 @@ export default function Settings() {
       {tab === 'routers' && <RoutersPanel />}
       {tab === 'olts' && <OltsPanel />}
       {tab === 'portal' && <PortalPanel />}
+      {tab === 'landing' && <LandingPanel />}
       {tab === 'integrations' && <IntegrationsPanel />}
       {tab === 'backup' && <BackupPanel />}
     </div>
@@ -358,7 +367,7 @@ function PortalPanel() {
             Pelanggan suspended akan diarahkan ke halaman ini via Mikrotik NAT redirect.
           </p>
         </div>
-        <a href="/portal" target="_blank" rel="noopener noreferrer"
+        <a href="/captive" target="_blank" rel="noopener noreferrer"
           className="btn-ghost text-brand-600 flex items-center gap-1 whitespace-nowrap text-sm">
           <ExternalLink size={14} /> Lihat Portal
         </a>
@@ -965,6 +974,257 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
           <button className="btn-ghost" onClick={onClose}><X size={18} /></button>
         </div>
         {children}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------- Landing & Portal Pelanggan ------------------- */
+interface FaqItem { q: string; a: string }
+interface HighlightItem { title: string; text: string }
+interface LandingSettings {
+  heroTitle: string | null;
+  heroSubtitle: string | null;
+  coverageNote: string | null;
+  officeAddress: string | null;
+  contactEmail: string | null;
+  networkStatus: 'operational' | 'degraded' | 'outage';
+  networkStatusNote: string | null;
+  registrationEnabled: boolean;
+  faq: FaqItem[];
+  highlights: HighlightItem[];
+  portalFeatures: Record<string, boolean>;
+}
+
+/** Saklar fitur portal pelanggan (§48). Nilai default = aktif kecuali disebut. */
+const PORTAL_FEATURE_LABELS: { key: string; label: string; hint?: string; defaultOn: boolean }[] = [
+  { key: 'wifiName', label: 'Ubah nama WiFi', defaultOn: true },
+  { key: 'wifiPassword', label: 'Ubah kata sandi WiFi', defaultOn: true },
+  { key: 'restartRouter', label: 'Restart perangkat', hint: 'Tersedia mulai tahap berikutnya', defaultOn: false },
+  { key: 'guestWifi', label: 'Guest WiFi', hint: 'Tersedia mulai tahap berikutnya', defaultOn: false },
+  { key: 'advancedWifi', label: 'Pengaturan WiFi lanjutan', hint: 'Tersedia mulai tahap berikutnya', defaultOn: false },
+  { key: 'packageUpgrade', label: 'Ajukan upgrade paket', defaultOn: true },
+  { key: 'packageDowngrade', label: 'Ajukan downgrade paket', defaultOn: true },
+  { key: 'speedTest', label: 'Speed test', defaultOn: true },
+  { key: 'ticket', label: 'Buat tiket bantuan', defaultOn: true },
+];
+
+function LandingPanel() {
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery<LandingSettings>({
+    queryKey: ['portal-settings'],
+    queryFn: async () => (await api.get('/portal/settings')).data,
+  });
+
+  const save = useMutation({
+    mutationFn: (body: any) => api.patch('/portal/settings', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['portal-settings'] }),
+    onError: (e: any) => alert(`Gagal menyimpan: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
+  });
+
+  if (isLoading) return <div className="py-8 text-center text-slate-400">Memuat…</div>;
+
+  const faq = data?.faq ?? [];
+  const highlights = data?.highlights ?? [];
+  const features = data?.portalFeatures ?? {};
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    save.mutate({
+      heroTitle: fd.get('heroTitle') || null,
+      heroSubtitle: fd.get('heroSubtitle') || null,
+      coverageNote: fd.get('coverageNote') || null,
+      officeAddress: fd.get('officeAddress') || null,
+      contactEmail: fd.get('contactEmail') || null,
+      networkStatus: fd.get('networkStatus'),
+      networkStatusNote: fd.get('networkStatusNote') || null,
+      registrationEnabled: fd.get('registrationEnabled') === 'on',
+    });
+  }
+
+  const setList = (key: 'faq' | 'highlights', value: any[]) => save.mutate({ [key]: value });
+
+  return (
+    <div className="space-y-6">
+      <div className="card flex items-center justify-between gap-4 p-4">
+        <div>
+          <p className="text-sm font-medium">Halaman Depan Pelanggan</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Konten di bawah ini tampil di alamat utama aplikasi (landing page) dan portal pelanggan.
+          </p>
+        </div>
+        <a href="/" target="_blank" rel="noopener noreferrer"
+          className="btn-ghost flex items-center gap-1 whitespace-nowrap text-sm text-brand-600">
+          <ExternalLink size={14} /> Lihat Halaman
+        </a>
+      </div>
+
+      <form onSubmit={onSubmit} className="card space-y-4 p-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-sm font-medium">Judul hero</label>
+            <input name="heroTitle" className="input" defaultValue={data?.heroTitle ?? ''}
+              placeholder="Internet Cepat & Stabil untuk Rumah Anda" />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-sm font-medium">Sub-judul hero</label>
+            <textarea name="heroSubtitle" rows={2} className="input" defaultValue={data?.heroSubtitle ?? ''}
+              placeholder="Kelola layanan internet, tagihan, pembayaran, dan WiFi Anda dengan mudah." />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-sm font-medium">Catatan area layanan</label>
+            <input name="coverageNote" className="input" defaultValue={data?.coverageNote ?? ''} />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Alamat kantor/sekretariat</label>
+            <input name="officeAddress" className="input" defaultValue={data?.officeAddress ?? ''} />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Email kontak</label>
+            <input name="contactEmail" type="email" className="input" defaultValue={data?.contactEmail ?? ''} />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Status jaringan</label>
+            <select name="networkStatus" className="input" defaultValue={data?.networkStatus ?? 'operational'}>
+              <option value="operational">🟢 Normal (hitung otomatis)</option>
+              <option value="degraded">🟡 Gangguan sebagian</option>
+              <option value="outage">🔴 Gangguan besar</option>
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              Pilih "Normal" agar status dihitung otomatis dari kondisi router & ONU.
+            </p>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Keterangan gangguan</label>
+            <input name="networkStatusNote" className="input" defaultValue={data?.networkStatusNote ?? ''}
+              placeholder="Perbaikan kabel di RT 03, estimasi selesai 15.00" />
+          </div>
+          <label className="flex items-center gap-2 text-sm sm:col-span-2">
+            <input type="checkbox" name="registrationEnabled" defaultChecked={data?.registrationEnabled !== false} />
+            Buka pendaftaran online di halaman depan
+          </label>
+        </div>
+        <div className="flex justify-end">
+          <button className="btn-primary" disabled={save.isPending}>
+            {save.isPending && <Loader2 size={16} className="animate-spin" />} Simpan
+          </button>
+        </div>
+      </form>
+
+      <EditableList
+        title="Keunggulan (tampil di bawah hero)"
+        items={highlights}
+        fields={[
+          { key: 'title', label: 'Judul' },
+          { key: 'text', label: 'Keterangan' },
+        ]}
+        onChange={(items) => setList('highlights', items)}
+        emptyText="Belum diisi — halaman depan memakai teks bawaan."
+      />
+
+      <EditableList
+        title="FAQ"
+        items={faq}
+        fields={[
+          { key: 'q', label: 'Pertanyaan' },
+          { key: 'a', label: 'Jawaban' },
+        ]}
+        onChange={(items) => setList('faq', items)}
+        emptyText="Belum diisi — halaman depan memakai FAQ bawaan."
+      />
+
+      <div className="card p-5">
+        <p className="text-sm font-medium">Fitur yang boleh dipakai pelanggan</p>
+        <p className="mt-0.5 text-xs text-slate-500">
+          Mematikan saklar akan menyembunyikan/menolak fitur tersebut di portal pelanggan.
+        </p>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          {PORTAL_FEATURE_LABELS.map((f) => {
+            const on = features[f.key] ?? f.defaultOn;
+            return (
+              <label key={f.key}
+                className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={(e) =>
+                    save.mutate({ portalFeatures: { ...features, [f.key]: e.target.checked } })
+                  }
+                />
+                <span className="flex-1">
+                  {f.label}
+                  {f.hint && <span className="block text-xs text-slate-400">{f.hint}</span>}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Editor daftar sederhana (FAQ / keunggulan) yang disimpan sebagai JSON. */
+function EditableList({
+  title, items, fields, onChange, emptyText,
+}: {
+  title: string;
+  items: any[];
+  fields: { key: string; label: string }[];
+  onChange: (items: any[]) => void;
+  emptyText: string;
+}) {
+  const [draft, setDraft] = useState<Record<string, string>>({});
+
+  const add = () => {
+    if (fields.some((f) => !draft[f.key]?.trim())) return;
+    onChange([...items, { ...draft }]);
+    setDraft({});
+  };
+
+  return (
+    <div className="card space-y-3 p-5">
+      <p className="text-sm font-medium">{title}</p>
+
+      {items.length === 0 ? (
+        <p className="text-xs text-slate-500">{emptyText}</p>
+      ) : (
+        <ul className="divide-y divide-slate-100">
+          {items.map((it, i) => (
+            <li key={i} className="flex items-start gap-3 py-2">
+              <div className="min-w-0 flex-1 text-sm">
+                <p className="font-medium">{it[fields[0].key]}</p>
+                <p className="text-slate-500">{it[fields[1].key]}</p>
+              </div>
+              <button
+                className="btn-ghost text-rose-600"
+                title="Hapus"
+                onClick={() => onChange(items.filter((_, idx) => idx !== i))}
+              >
+                <Trash2 size={15} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        {fields.map((f) => (
+          <input
+            key={f.key}
+            className="input"
+            placeholder={f.label}
+            value={draft[f.key] ?? ''}
+            onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+          />
+        ))}
+      </div>
+      <div className="flex justify-end">
+        <button className="btn-ghost text-brand-600" onClick={add}>
+          <Plus size={15} /> Tambah
+        </button>
       </div>
     </div>
   );

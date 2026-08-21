@@ -5,3 +5,8 @@ client/
 *.log
 .DS_Store
 coverage/
+
+# Lockfile sengaja tidak di-commit: CI memakai `npm install`, dan lockfile
+# hasil generate di Windows bisa kehilangan binary rollup/esbuild versi Linux
+# sehingga build image gagal.
+package-lock.json

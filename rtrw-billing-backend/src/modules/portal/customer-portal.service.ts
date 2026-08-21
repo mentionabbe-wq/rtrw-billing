@@ -206,11 +206,39 @@ export class CustomerPortalService {
     }
   }
 
+  /**
+   * Info WiFi pelanggan untuk menu "WiFi Saya" di portal (Phase 1).
+   * `supported: false` berarti perangkatnya belum terhubung ACS — portal
+   * menampilkan pesan "hubungi teknisi", bukan tombol yang pasti gagal (§47).
+   */
+  async wifiInfoFor(customerId: string) {
+    const sub = await this.subs
+      .createQueryBuilder('s')
+      .leftJoin('s.customer', 'c')
+      .where('c.id = :id', { id: customerId })
+      .getOne();
+
+    const wifi = await this.findWifiDevice(sub?.pppoeUser ?? null);
+    if (!wifi) {
+      return {
+        supported: false,
+        ssid: null,
+        online: false,
+        message:
+          'Perangkat Anda belum mendukung pengaturan WiFi otomatis. Silakan hubungi teknisi.',
+      };
+    }
+    return { supported: true, ssid: wifi.ssid ?? null, online: !!wifi.online, message: null };
+  }
+
   /** Ubah SSID / password WiFi milik pelanggan sendiri (via TR-069). */
   async changeWifi(customerId: string, ssid?: string, password?: string) {
     if (!ssid && !password) throw new BadRequestException('Isi nama WiFi atau password baru.');
-    if (password && password.length < 8) {
-      throw new BadRequestException('Password WiFi minimal 8 karakter.');
+    if (ssid !== undefined && (ssid.length < 2 || ssid.length > 32)) {
+      throw new BadRequestException('Nama WiFi harus 2–32 karakter.');
+    }
+    if (password !== undefined && (password.length < 8 || password.length > 63)) {
+      throw new BadRequestException('Password WiFi harus 8–63 karakter.');
     }
 
     const sub = await this.subs

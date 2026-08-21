@@ -28,9 +28,12 @@ export class AuditInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap(() => {
         const res = ctx.switchToHttp().getResponse();
+        // Aksi dari portal pelanggan tidak punya req.user (bukan akun admin) —
+        // catat pelakunya sebagai `customer:<id>` agar tetap terlacak (§38).
+        const portalActor = req.portal?.customerId ? `customer:${req.portal.customerId}` : null;
         this.audit.record({
           userId: req.user?.id ?? null,
-          userEmail: req.user?.email ?? null,
+          userEmail: req.user?.email ?? portalActor,
           action: `${req.method} ${req.path || req.url}`,
           entity,
           entityId: req.params?.id ?? null,

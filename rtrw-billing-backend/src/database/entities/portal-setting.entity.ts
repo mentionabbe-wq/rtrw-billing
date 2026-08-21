@@ -38,4 +38,46 @@ export class PortalSetting {
    */
   @Column({ name: 'qris_image', type: 'text', nullable: true })
   qrisImage: string | null;
+
+  // ── Konten landing page publik (Phase 1) ──────────────────────────────────
+
+  @Column({ name: 'hero_title', type: 'varchar', nullable: true })
+  heroTitle: string | null;
+
+  @Column({ name: 'hero_subtitle', type: 'text', nullable: true })
+  heroSubtitle: string | null;
+
+  @Column({ name: 'coverage_note', type: 'text', nullable: true })
+  coverageNote: string | null;
+
+  @Column({ type: 'jsonb', default: () => `'[]'` })
+  faq: { q: string; a: string }[];
+
+  /** Tiga-empat keunggulan singkat di bawah hero. */
+  @Column({ type: 'jsonb', default: () => `'[]'` })
+  highlights: { title: string; text: string }[];
+
+  @Column({ name: 'office_address', type: 'text', nullable: true })
+  officeAddress: string | null;
+
+  @Column({ name: 'contact_email', type: 'varchar', nullable: true })
+  contactEmail: string | null;
+
+  /** operational | degraded | outage — dipakai halaman Status Jaringan (§41). */
+  @Column({ name: 'network_status', type: 'varchar', length: 16, default: 'operational' })
+  networkStatus: 'operational' | 'degraded' | 'outage';
+
+  @Column({ name: 'network_status_note', type: 'text', nullable: true })
+  networkStatusNote: string | null;
+
+  @Column({ name: 'registration_enabled', default: true })
+  registrationEnabled: boolean;
+
+  /**
+   * Saklar fitur portal pelanggan (§48). Kunci yang dikenal:
+   * wifiName, wifiPassword, restartRouter, guestWifi, advancedWifi,
+   * packageUpgrade, packageDowngrade, speedTest, ticket.
+   */
+  @Column({ name: 'portal_features', type: 'jsonb', default: () => `'{}'` })
+  portalFeatures: Record<string, boolean>;
 }

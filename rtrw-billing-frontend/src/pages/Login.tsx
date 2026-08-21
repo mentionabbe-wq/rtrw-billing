@@ -28,7 +28,7 @@ export default function Login() {
         return;
       }
       setSession(data);
-      navigate('/');
+      navigate('/admin');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Login gagal');
     } finally {

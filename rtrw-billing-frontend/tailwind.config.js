@@ -1,6 +1,8 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
+  // Mode gelap dipakai landing page & portal pelanggan (lihat src/lib/theme.ts).
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {

@@ -2,7 +2,7 @@ import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Loader2, X, Pencil, Trash2, RefreshCw, Receipt, Send, Save,
-  Eye, EyeOff, Dices, CheckCircle2, XCircle,
+  Eye, EyeOff, Dices, CheckCircle2, XCircle, KeyRound,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useCan } from '@/lib/rbac';
@@ -92,6 +92,25 @@ export default function Customers() {
     },
     onError: (e: any) => alert(`Gagal sinkron: ${e?.response?.data?.message ?? e?.message ?? 'error'}`),
   });
+  /** Reset kata sandi portal pelanggan; sandi dikirim via WhatsApp oleh backend. */
+  const portalReset = useMutation({
+    mutationFn: (customerId: string) => api.post(`/portal-accounts/${customerId}/reset-password`),
+    onSuccess: (res: any) => {
+      const d = res?.data ?? {};
+      alert(
+        [
+          `Kata sandi portal baru dikirim ke ${d.sentTo ?? 'WhatsApp pelanggan'}.`,
+          '',
+          `No. Pelanggan: ${d.customerNo}`,
+          `Kata sandi sementara: ${d.tempPassword}`,
+          '',
+          'Minta pelanggan segera menggantinya setelah masuk.',
+        ].join('\n'),
+      );
+    },
+    onError: (e: any) => alert(e?.response?.data?.message ?? 'Gagal mengatur ulang kata sandi portal.'),
+  });
+
   const updateMut = useMutation({
     mutationFn: ({ id, body }: { id: string; body: any }) => api.patch(`/customers/${id}`, body),
     onSuccess: () => { invalidate(); setEditing(null); },
@@ -238,6 +257,21 @@ export default function Customers() {
                       {canWrite && (
                         <button className="btn-ghost" onClick={() => openEdit(c)} title="Edit data pelanggan">
                           <Pencil size={16} />
+                        </button>
+                      )}
+                      {canAdmin && (
+                        <button
+                          className="btn-ghost text-brand-600"
+                          disabled={portalReset.isPending}
+                          title="Kirim kata sandi portal baru via WhatsApp"
+                          onClick={() => {
+                            if (confirm(
+                              `Buat kata sandi portal baru untuk ${c.fullName} dan kirim ke WhatsApp-nya?\n` +
+                              'Semua sesi portal yang sedang aktif akan dikeluarkan.',
+                            )) portalReset.mutate(c.id);
+                          }}
+                        >
+                          <KeyRound size={16} />
                         </button>
                       )}
                       {canAdmin && (

@@ -5,6 +5,18 @@ aplikasi (satu image, satu port). Integrasi Mikrotik RouterOS API (auto-suspend,
 bandwidth), monitoring SNMP OLT (ZTE/Huawei), tagihan otomatis + WhatsApp,
 dashboard real-time, RBAC, 2FA, dan audit log.
 
+Sejak **Phase 1 portal pelanggan**, aplikasi ini juga menyajikan landing page
+publik dan portal self-service pelanggan:
+
+| URL | Isi |
+|---|---|
+| `/` | Landing page publik: paket, coverage, cara bayar, FAQ, status jaringan, cek tagihan (OTP), pendaftaran |
+| `/portal` | Portal pelanggan: tagihan, internet, WiFi, perangkat, notifikasi, profil |
+| `/admin` | Panel pengelola (URL lama `/customers`, `/invoices`, … otomatis diarahkan ke sini) |
+| `/captive` | Halaman captive portal Mikrotik untuk pelanggan ter-isolir |
+
+Rinciannya: [docs/PHASE-1-PORTAL-PELANGGAN.md](docs/PHASE-1-PORTAL-PELANGGAN.md).
+
 ```
 rtrw-billing/
 ├── rtrw-billing-backend/    # NestJS API + worker (BullMQ) + serve UI
@@ -27,7 +39,9 @@ ghcr.io/mentionabbe-wq/rtrw-billing:latest
    paste isi [`casaos-appstore.yml`](casaos-appstore.yml).
 3. Ganti `DATA_ENC_KEY` (hasil `openssl rand -hex 32`), `DB_PASS` (di service app &
    postgres harus sama), serta `JWT_SECRET`/`JWT_REFRESH_SECRET`. Install.
-4. Buka `http://IP-CASAOS:3000` → login `admin@rtrw.local` / `admin12345`.
+4. Buka `http://IP-CASAOS:3000` → halaman depan pelanggan. Panel pengelola ada di
+   `/admin/login` (`admin@rtrw.local` / `admin12345`), portal pelanggan di
+   `/portal/masuk` (demo: `CST000001` / `pelanggan123`). **Ganti kedua kata sandi ini.**
 5. Setelah jalan, set `SEED_ON_START: "false"` lalu Recreate.
 
 ## Jalankan lokal untuk dev

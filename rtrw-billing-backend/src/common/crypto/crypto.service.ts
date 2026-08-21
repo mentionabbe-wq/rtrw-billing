@@ -29,6 +29,15 @@ export class CryptoService implements OnModuleInit {
     return Buffer.concat([iv, cipher.getAuthTag(), enc]);
   }
 
+  /**
+   * HMAC-SHA256 deterministik (hex, 64 char) memakai kunci yang sama.
+   * Untuk kolom pencarian atas data terenkripsi — mis. mencari pelanggan dari
+   * nomor WhatsApp — dan untuk menyimpan token/OTP tanpa plaintext.
+   */
+  hmac(value: string): string {
+    return crypto.createHmac('sha256', this.key).update(value).digest('hex');
+  }
+
   decrypt(buf: Buffer | null | undefined): string | null {
     if (buf == null) return null;
     const iv = buf.subarray(0, 12);

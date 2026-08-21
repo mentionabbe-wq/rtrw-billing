@@ -129,7 +129,7 @@ export default function Portal() {
 
         {/* Portal self-service: cek tagihan & ubah WiFi */}
         <a
-          href="/pelanggan"
+          href="/portal"
           className="w-full flex items-center justify-center gap-2 rounded-xl py-3 px-6 font-semibold border-2 transition hover:bg-slate-50"
           style={{ borderColor: cfg.primaryColor, color: cfg.primaryColor }}
         >

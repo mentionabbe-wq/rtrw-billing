@@ -5,6 +5,7 @@ import * as argon2 from 'argon2';
 import dataSource from './data-source';
 import {
   User, ServicePackage, Router, Olt, Customer, Subscription, Device,
+  PortalSetting, CoverageArea,
 } from './entities';
 
 /**
@@ -23,6 +24,21 @@ function enc(plain: string | null): Buffer | null {
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   const ct = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
   return Buffer.concat([iv, cipher.getAuthTag(), ct]);
+}
+
+/** Sama dengan CryptoService.hmac — hash pencarian utk nomor telepon. */
+function hmac(value: string): string {
+  const key = Buffer.from(process.env.DATA_ENC_KEY || '', 'hex');
+  if (key.length !== 32) throw new Error('DATA_ENC_KEY must be 32 bytes (64 hex chars)');
+  return crypto.createHmac('sha256', key).update(value).digest('hex');
+}
+
+/** 081234567001 → 6281234567001 (sinkron dengan normalizePhone di backend). */
+function e164(raw: string): string {
+  let d = raw.replace(/\D/g, '');
+  if (d.startsWith('0')) d = '62' + d.slice(1);
+  else if (d.startsWith('8')) d = '62' + d;
+  return d;
 }
 
 const addDays = (d: Date, n: number) => {
@@ -51,11 +67,58 @@ async function run() {
   let packages = await pkgRepo.find();
   if (packages.length === 0) {
     packages = await pkgRepo.save([
-      pkgRepo.create({ name: 'Home 10Mbps', price: '150000', rateLimit: '10M/10M', pppoeProfile: 'home-10' }),
-      pkgRepo.create({ name: 'Home 20Mbps', price: '200000', rateLimit: '20M/20M', pppoeProfile: 'home-20' }),
-      pkgRepo.create({ name: 'Home 50Mbps', price: '350000', rateLimit: '50M/50M', pppoeProfile: 'home-50' }),
+      pkgRepo.create({
+        name: 'BASIC', price: '150000', rateLimit: '10M/10M', pppoeProfile: 'home-10',
+        speedDownMbps: 10, speedUpMbps: 10, sortOrder: 1, isPublic: true,
+        description: 'Cocok untuk 1–3 perangkat: browsing, media sosial, dan streaming SD.',
+        features: ['Unlimited tanpa FUP', 'Gratis pemasangan WiFi', 'Dukungan WhatsApp'],
+      }),
+      pkgRepo.create({
+        name: 'FAMILY', price: '200000', rateLimit: '20M/20M', pppoeProfile: 'home-20',
+        speedDownMbps: 20, speedUpMbps: 20, sortOrder: 2, isPublic: true, badge: 'POPULER',
+        description: 'Pilihan keluarga: streaming HD di beberapa perangkat sekaligus.',
+        features: ['Unlimited tanpa FUP', 'Gratis pemasangan WiFi', 'Portal pelanggan', 'Dukungan WhatsApp'],
+      }),
+      pkgRepo.create({
+        name: 'PRO', price: '350000', rateLimit: '50M/50M', pppoeProfile: 'home-50',
+        speedDownMbps: 50, speedUpMbps: 50, sortOrder: 3, isPublic: true,
+        description: 'Untuk work from home, streaming 4K, dan banyak perangkat.',
+        features: ['Unlimited tanpa FUP', 'Prioritas dukungan', 'Portal pelanggan', 'Gratis pemasangan WiFi'],
+      }),
     ]);
     console.log(`✓ ${packages.length} paket`);
+  }
+
+  // ---- konten landing page & portal ----
+  const settingRepo = dataSource.getRepository(PortalSetting);
+  if (!(await settingRepo.findOne({ where: { id: 1 } }))) {
+    await settingRepo.save(settingRepo.create({
+      id: 1,
+      companyName: 'RT/RW Net Warga',
+      tagline: 'Internet Rumahan Cepat & Terjangkau',
+      heroTitle: 'Internet Cepat & Stabil untuk Rumah Anda',
+      heroSubtitle: 'Kelola layanan internet, tagihan, pembayaran, dan WiFi Anda dengan mudah.',
+      whatsappNumber: '6281200000000',
+      contactEmail: 'admin@rtrw.local',
+      officeAddress: 'Sekretariat RW 05, Jl. Mawar No. 1',
+      coverageNote: 'Belum masuk area? Kirim titik lokasi Anda via WhatsApp — kami cek kemungkinan penarikan jaringan baru.',
+      paymentInstructions: 'Pembayaran dapat dilakukan via transfer bank atau QRIS. Konfirmasi otomatis setelah pembayaran terverifikasi.',
+      registrationEnabled: true,
+      networkStatus: 'operational',
+    }));
+    console.log('✓ pengaturan portal & konten landing page');
+  }
+
+  // ---- area coverage ----
+  const coverageRepo = dataSource.getRepository(CoverageArea);
+  if ((await coverageRepo.count()) === 0) {
+    await coverageRepo.save([
+      coverageRepo.create({ name: 'RT 01 / RW 05', rt: '01', rw: '05', village: 'Sukamaju', status: 'available', radiusM: 700 }),
+      coverageRepo.create({ name: 'RT 02 / RW 05', rt: '02', rw: '05', village: 'Sukamaju', status: 'available', radiusM: 700 }),
+      coverageRepo.create({ name: 'RT 03 / RW 05', rt: '03', rw: '05', village: 'Sukamaju', status: 'full', radiusM: 700, note: 'Kapasitas ODP penuh, menunggu penambahan.' }),
+      coverageRepo.create({ name: 'RW 06', rw: '06', village: 'Sukamaju', status: 'planned', radiusM: 900, note: 'Rencana penarikan kabel kuartal berikutnya.' }),
+    ]);
+    console.log('✓ 4 area coverage');
   }
 
   // ---- router (Mikrotik) ----
@@ -106,12 +169,21 @@ async function run() {
     let n = 0;
     for (const s of samples) {
       n++;
+      const phone = e164(s.phone);
       const customer = await custRepo.save(custRepo.create({
         customerNo: 'CST' + String(n).padStart(6, '0'),
         fullName: s.name,
-        phoneEnc: enc(s.phone)!,
+        phoneEnc: enc(phone)!,
+        phoneHash: hmac(phone),
         nikEnc: enc('32010100000000' + String(n).padStart(2, '0')),
-        address: `Jl. Mawar No. ${n}, RT 0${n}`,
+        address: `Jl. Mawar No. ${n}, RT 0${n} RW 05`,
+        rt: '0' + n,
+        rw: '05',
+        email: `${s.name.split(' ')[0].toLowerCase()}@contoh.local`,
+        // Kata sandi portal demo — GANTI di produksi (atau pakai tombol
+        // "Reset kata sandi portal" di halaman Pelanggan).
+        passwordHash: await argon2.hash('pelanggan123', { type: argon2.argon2id }),
+        portalEnabled: true,
         status: s.status === 'suspended' ? 'suspended' : 'active',
       }));
 
@@ -141,7 +213,31 @@ async function run() {
       }));
     }
     console.log(`✓ ${samples.length} pelanggan + langganan + ONU`);
+    console.log('  login portal demo: CST000001 / pelanggan123 (GANTI!)');
   }
+
+  // ---- backfill hash telepon utk data lama (dipasang sebelum Phase 1) ----
+  const needHash = await custRepo
+    .createQueryBuilder('c')
+    .where('c.phone_hash IS NULL')
+    .getMany();
+  let filled = 0;
+  for (const c of needHash) {
+    try {
+      const key = Buffer.from(process.env.DATA_ENC_KEY || '', 'hex');
+      const buf = c.phoneEnc;
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, buf.subarray(0, 12));
+      decipher.setAuthTag(buf.subarray(12, 28));
+      const plain = Buffer.concat([decipher.update(buf.subarray(28)), decipher.final()]).toString('utf8');
+      const norm = e164(plain);
+      if (!norm) continue;
+      await custRepo.update(c.id, { phoneHash: hmac(norm) });
+      filled++;
+    } catch {
+      // Nomor tak terbaca (kunci berbeda) — lewati, admin dapat memperbaiki manual.
+    }
+  }
+  if (filled) console.log(`✓ hash telepon diisi untuk ${filled} pelanggan lama`);
 
   await dataSource.destroy();
   console.log('Seed complete.');

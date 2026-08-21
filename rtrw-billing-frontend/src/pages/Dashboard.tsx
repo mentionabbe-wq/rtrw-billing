@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Area, AreaChart, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import { Users, Wifi, Radio, Receipt, Activity } from 'lucide-react';
+import { Users, Wifi, Radio, Receipt, Activity, UserPlus } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useCan } from '@/lib/rbac';
 import { getMonitoringSocket, OnuStatusEvent } from '@/lib/socket';
@@ -22,6 +23,7 @@ interface Stats {
   unpaidInvoices: number;
   onuActive: number;
   pppoeActive: number;
+  pendingLeads: number;
   trafficSeries: { t: string; mbps: number }[];
 }
 
@@ -96,6 +98,21 @@ export default function Dashboard() {
         <StatCard icon={Radio} label="ONU Aktif" value={data?.onuActive ?? '—'} tone="bg-sky-50 text-sky-600" />
         <StatCard icon={Receipt} label="Tagihan Belum Bayar" value={data?.unpaidInvoices ?? '—'} tone="bg-rose-50 text-rose-600" />
       </div>
+
+      {!!data?.pendingLeads && (
+        <Link
+          to="/admin/registrations"
+          className="card flex items-center gap-4 p-4 transition hover:bg-amber-50/60"
+        >
+          <span className="grid h-10 w-10 place-items-center rounded-lg bg-amber-50 text-amber-600">
+            <UserPlus size={20} />
+          </span>
+          <div>
+            <p className="font-medium">{data.pendingLeads} pendaftaran baru menunggu ditindaklanjuti</p>
+            <p className="text-sm text-slate-500">Dari halaman depan pelanggan — klik untuk memproses.</p>
+          </div>
+        </Link>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">

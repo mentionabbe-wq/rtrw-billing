@@ -9,6 +9,11 @@
     background-attachment: fixed;
     min-height: 100vh;
   }
+  /* Landing page & portal pelanggan saat mode gelap aktif. */
+  .dark body {
+    @apply text-slate-100;
+    background: linear-gradient(160deg, #020617 0%, #0b1220 45%, #020617 100%);
+  }
 }
 
 @layer components {

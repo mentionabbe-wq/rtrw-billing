@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, Users, Package, Receipt, Activity, LogOut, Menu, X, Wifi,
   Settings as SettingsIcon, ScrollText, UserCog, ShieldCheck, Ticket, Wallet, Map as MapIcon,
+  UserPlus, MapPin, Globe,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuth } from '@/store/auth';
@@ -23,39 +24,41 @@ const navGroups: { title: string; items: NavItem[] }[] = [
   {
     title: 'Dasbor',
     items: [
-      { to: '/', label: 'Ringkasan', icon: LayoutDashboard, end: true },
-      { to: '/finance', label: 'Laporan Keuangan', icon: Wallet, cap: 'billing.write' },
+      { to: '/admin', label: 'Ringkasan', icon: LayoutDashboard, end: true },
+      { to: '/admin/finance', label: 'Laporan Keuangan', icon: Wallet, cap: 'billing.write' },
     ],
   },
   {
     title: 'Infrastruktur',
     items: [
-      { to: '/map', label: 'Pemetaan & ODP', icon: MapIcon },
-      { to: '/pppoe', label: 'PPPoE Aktif', icon: Wifi },
-      { to: '/monitoring', label: 'OLT & ONU', icon: Activity },
+      { to: '/admin/map', label: 'Pemetaan & ODP', icon: MapIcon },
+      { to: '/admin/pppoe', label: 'PPPoE Aktif', icon: Wifi },
+      { to: '/admin/monitoring', label: 'OLT & ONU', icon: Activity },
     ],
   },
   {
     title: 'Keuangan',
     items: [
-      { to: '/packages', label: 'Paket Internet', icon: Package },
-      { to: '/invoices', label: 'Tagihan', icon: Receipt },
-      { to: '/hotspot', label: 'Hotspot Voucher', icon: Ticket },
+      { to: '/admin/packages', label: 'Paket Internet', icon: Package },
+      { to: '/admin/invoices', label: 'Tagihan', icon: Receipt },
+      { to: '/admin/hotspot', label: 'Hotspot Voucher', icon: Ticket },
     ],
   },
   {
     title: 'Pelanggan',
     items: [
-      { to: '/customers', label: 'Daftar Pelanggan', icon: Users },
+      { to: '/admin/customers', label: 'Daftar Pelanggan', icon: Users },
+      { to: '/admin/registrations', label: 'Calon Pelanggan', icon: UserPlus },
+      { to: '/admin/coverage', label: 'Area Layanan', icon: MapPin, cap: 'settings.manage' },
     ],
   },
   {
     title: 'Pengaturan',
     items: [
-      { to: '/settings', label: 'Pengaturan', icon: SettingsIcon, cap: 'settings.manage' },
-      { to: '/users', label: 'Pengguna', icon: UserCog, cap: 'users.manage' },
-      { to: '/security', label: 'Keamanan Akun', icon: ShieldCheck },
-      { to: '/audit', label: 'Audit Log', icon: ScrollText, cap: 'audit.view' },
+      { to: '/admin/settings', label: 'Pengaturan', icon: SettingsIcon, cap: 'settings.manage' },
+      { to: '/admin/users', label: 'Pengguna', icon: UserCog, cap: 'users.manage' },
+      { to: '/admin/security', label: 'Keamanan Akun', icon: ShieldCheck },
+      { to: '/admin/audit', label: 'Audit Log', icon: ScrollText, cap: 'audit.view' },
     ],
   },
 ];
@@ -77,7 +80,7 @@ export function Layout() {
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    navigate('/admin/login');
   };
 
   return (
@@ -147,11 +150,20 @@ export function Layout() {
             <Menu size={20} />
           </button>
           <div className="ml-auto flex items-center gap-3">
+            <a
+              href="/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-ghost"
+              title="Buka halaman depan pelanggan"
+            >
+              <Globe size={18} />
+            </a>
             <div className="text-right">
               <p className="text-sm font-medium">{user?.email}</p>
               <p className="text-xs capitalize text-slate-500">{user?.role}</p>
             </div>
-            <NavLink to="/security" className="btn-ghost" title="Keamanan akun (2FA)">
+            <NavLink to="/admin/security" className="btn-ghost" title="Keamanan akun (2FA)">
               <ShieldCheck size={18} />
             </NavLink>
             <button className="btn-ghost" onClick={handleLogout} title="Keluar">

@@ -45,6 +45,32 @@ export class ServicePackage {
   @Column({ name: 'billing_cycle', type: 'smallint', default: 30 })
   billingCycle: number;
 
+  // ── Tampilan di landing page publik (Phase 1) ─────────────────────────────
+
+  /** Tampilkan paket ini di halaman paket publik. */
+  @Column({ name: 'is_public', default: true })
+  isPublic: boolean;
+
+  @Column({ type: 'text', nullable: true })
+  description: string | null;
+
+  /** Daftar benefit yang tampil bercentang di kartu paket. */
+  @Column({ type: 'jsonb', default: () => `'[]'` })
+  features: string[];
+
+  @Column({ name: 'speed_down_mbps', type: 'int', nullable: true })
+  speedDownMbps: number | null;
+
+  @Column({ name: 'speed_up_mbps', type: 'int', nullable: true })
+  speedUpMbps: number | null;
+
+  /** Label kecil di kartu paket, mis. "POPULER". */
+  @Column({ type: 'varchar', length: 24, nullable: true })
+  badge: string | null;
+
+  @Column({ name: 'sort_order', type: 'int', default: 0 })
+  sortOrder: number;
+
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
