@@ -159,16 +159,11 @@ export default function Landing() {
                     {p.badge}
                   </span>
                 )}
-                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                {/* Nama paket sudah memuat kecepatannya, jadi tidak diulang lagi. */}
+                <h3 className="text-xl font-extrabold uppercase tracking-wide text-slate-900 dark:text-white">
                   {p.name}
                 </h3>
-                <p className="mt-2 flex items-baseline gap-1">
-                  <span className="text-4xl font-extrabold text-slate-900 dark:text-white">
-                    {p.speedDownMbps ?? '—'}
-                  </span>
-                  <span className="text-lg font-semibold text-slate-500 dark:text-slate-400">Mbps</span>
-                </p>
-                <p className="mt-1 text-2xl font-bold text-brand-600 dark:text-brand-400">
+                <p className="mt-3 text-3xl font-bold text-brand-600 dark:text-brand-400">
                   {rupiah(p.price)}
                   <span className="text-sm font-medium text-slate-500 dark:text-slate-400">/bulan</span>
                 </p>

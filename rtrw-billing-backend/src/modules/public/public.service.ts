@@ -93,8 +93,8 @@ export class PublicService {
       id: String(p.id),
       name: p.name,
       price: Number(p.price),
-      speedDownMbps: p.speedDownMbps ?? this.speedFromRateLimit(p.rateLimit, 0),
-      speedUpMbps: p.speedUpMbps ?? this.speedFromRateLimit(p.rateLimit, 1),
+      speedDownMbps: p.speedDownMbps ?? this.speedFromRateLimit(p.rateLimit, 'down'),
+      speedUpMbps: p.speedUpMbps ?? this.speedFromRateLimit(p.rateLimit, 'up'),
       description: p.description ?? null,
       features: p.features?.length ? p.features : ['Unlimited tanpa FUP', 'Gratis pemasangan WiFi', 'Portal pelanggan'],
       badge: p.badge ?? null,
@@ -102,10 +102,16 @@ export class PublicService {
     }));
   }
 
-  /** "20M/10M" → 20 (index 0) atau 10 (index 1). */
-  private speedFromRateLimit(rateLimit: string | null, index: 0 | 1): number | null {
+  /**
+   * Ambil kecepatan dari rate-limit MikroTik. Formatnya `rx/tx` dilihat DARI
+   * SISI ROUTER: bagian pertama = unggah pelanggan, bagian kedua = unduh.
+   * Jadi "5M/10M" berarti unduh 10 Mbps, unggah 5 Mbps.
+   */
+  private speedFromRateLimit(rateLimit: string | null, arah: 'down' | 'up'): number | null {
     const parts = (rateLimit ?? '').split('/');
-    const m = /(\d+)\s*[Mm]/.exec(parts[index] ?? '');
+    // Tanpa tanda "/" hanya ada satu angka — pakai untuk keduanya.
+    const part = parts.length > 1 ? parts[arah === 'down' ? 1 : 0] : parts[0];
+    const m = /(\d+)\s*[Mm]/.exec(part ?? '');
     return m ? Number(m[1]) : null;
   }
 

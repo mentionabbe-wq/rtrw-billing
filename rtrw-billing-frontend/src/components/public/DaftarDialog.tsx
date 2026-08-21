@@ -154,7 +154,7 @@ export function DaftarDialog({ open, onClose, packages, presetPackageId }: Props
                 <option value="">Belum menentukan</option>
                 {packages.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} — {p.speedDownMbps ?? '?'} Mbps — {rupiah(p.price)}
+                    {p.name} — {rupiah(p.price)}
                   </option>
                 ))}
               </select>
