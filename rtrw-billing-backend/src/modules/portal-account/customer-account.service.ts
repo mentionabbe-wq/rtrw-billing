@@ -196,23 +196,39 @@ export class CustomerAccountService {
       return { subscription: null, live: null, liveError: null };
     }
 
-    let live: { online: boolean; ip: string | null; uptime: string | null; callerId: string | null } | null = null;
+    let live: {
+      online: boolean; ip: string | null; uptime: string | null; callerId: string | null;
+      cached?: boolean; checkedAt?: Date | null;
+    } | null = null;
     let liveError: string | null = null;
 
     if (sub.router && sub.pppoeUser) {
       try {
         const sessions = await this.mikrotik.listActive(sub.router);
-        const hit = sessions.find(
-          (s: any) => String(s.name).toLowerCase() === sub.pppoeUser.toLowerCase(),
-        );
+        const wanted = sub.pppoeUser.trim().toLowerCase();
+        const hit = sessions.find((s: any) => String(s.name ?? '').trim().toLowerCase() === wanted);
         live = hit
           ? { online: true, ip: hit.address ?? null, uptime: hit.uptime ?? null, callerId: hit.callerId ?? null }
           : { online: false, ip: null, uptime: null, callerId: null };
       } catch (e) {
-        // Router tak terjangkau → UI menampilkan "status tidak tersedia", bukan error keras.
-        liveError = 'Status realtime sedang tidak tersedia.';
         this.logger.warn(`gagal baca sesi PPPoE (${sub.router?.name}): ${(e as Error).message}`);
       }
+    }
+
+    // Router tak terjawab / langganan belum dipetakan → pakai hasil polling
+    // terakhir supaya pelanggan tidak melihat "offline" palsu.
+    if (!live && sub.liveCheckedAt) {
+      live = {
+        online: sub.liveOnline,
+        ip: sub.liveIp,
+        uptime: sub.liveUptime,
+        callerId: sub.liveCallerId,
+        cached: true,
+        checkedAt: sub.liveCheckedAt,
+      };
+    }
+    if (!live) {
+      liveError = 'Status koneksi belum dapat dibaca. Coba beberapa saat lagi.';
     }
 
     return { subscription: this.publicSubscription(sub), live, liveError };

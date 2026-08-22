@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@modules/auth/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { Roles } from '@common/decorators/roles.decorator';
+import { PppoePollerService } from '@modules/scheduler/pppoe-poller.service';
 import { SubscriptionsService } from './subscriptions.service';
 
 @ApiTags('subscriptions')
@@ -10,7 +11,10 @@ import { SubscriptionsService } from './subscriptions.service';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('subscriptions')
 export class SubscriptionsController {
-  constructor(private readonly service: SubscriptionsService) {}
+  constructor(
+    private readonly service: SubscriptionsService,
+    private readonly poller: PppoePollerService,
+  ) {}
 
   @Get()
   findAll() {
@@ -21,6 +25,19 @@ export class SubscriptionsController {
   @Get('pppoe-active')
   pppoeActive() {
     return this.service.pppoeActive();
+  }
+
+  /** Langganan yang ONU-nya online tapi sesi PPPoE-nya tidak ditemukan. */
+  @Get('pppoe-issues')
+  pppoeIssues() {
+    return this.service.pppoeIssues();
+  }
+
+  /** Jalankan polling PPPoE sekarang, tanpa menunggu cron. */
+  @Post('pppoe-refresh')
+  @Roles('admin', 'operator')
+  pppoeRefresh() {
+    return this.poller.run();
   }
 
   /** Buat langganan baru untuk pelanggan yang sudah ada. */

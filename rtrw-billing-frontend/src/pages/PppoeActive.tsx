@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
-import { Wifi, RefreshCw, Loader2 } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Wifi, RefreshCw, Loader2, AlertTriangle } from 'lucide-react';
 import { api } from '@/lib/api';
 
 interface ActivePppoe {
@@ -48,6 +48,8 @@ export default function PppoeActive() {
         digabung data langganan untuk menampilkan <strong>sisa masa aktif</strong>. Auto-refresh 30 detik.
       </p>
 
+      <PppoeIssues />
+
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -88,6 +90,114 @@ export default function PppoeActive() {
           </table>
         </div>
       </div>
+    </div>
+  );
+}
+
+interface PppoeIssue {
+  subscriptionId: string;
+  customerName: string | null;
+  customerNo: string | null;
+  pppoeUser: string | null;
+  packageName: string | null;
+  routerName: string | null;
+  liveRouterName: string | null;
+  onuStatus: string | null;
+  onuSerial: string | null;
+  lastOnlineAt: string | null;
+  checkedAt: string | null;
+  reasons: string[];
+}
+
+const waktu = (v: string | null) =>
+  v ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(v)) : 'belum pernah';
+
+/**
+ * Pelanggan yang ONU-nya online tapi sesi PPPoE-nya tidak ditemukan pada
+ * polling terakhir — kombinasi yang paling sering jadi keluhan "internet
+ * jalan tapi status di aplikasi mati", atau sebaliknya pelanggan yang
+ * sebenarnya tidak memakai PPPoE.
+ */
+function PppoeIssues() {
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery<PppoeIssue[]>({
+    queryKey: ['pppoe-issues'],
+    queryFn: async () => (await api.get('/subscriptions/pppoe-issues')).data,
+    refetchInterval: 60000,
+  });
+
+  const refresh = useMutation({
+    mutationFn: () => api.post('/subscriptions/pppoe-refresh'),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['pppoe-issues'] });
+      qc.invalidateQueries({ queryKey: ['pppoe-active'] });
+      const d = res?.data ?? {};
+      alert(
+        [
+          `Polling PPPoE selesai.`,
+          `Router terjawab: ${d.routersOnline}/${d.routersTotal}`,
+          `Sesi aktif: ${d.sessions}, cocok dengan langganan: ${d.matched}`,
+          d.unmatched?.length
+            ? `\nSesi tanpa langganan (${d.unmatched.length}): ${d.unmatched.slice(0, 10).join(', ')}`
+            : '',
+        ].join('\n'),
+      );
+    },
+    onError: (e: any) => alert(e?.response?.data?.message ?? 'Polling gagal dijalankan.'),
+  });
+
+  if (isLoading) return null;
+
+  return (
+    <div className="card border-amber-200 bg-amber-50/60 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+            <AlertTriangle size={16} /> ONU aktif tapi PPPoE tidak terhubung
+          </h2>
+          <p className="mt-0.5 text-xs text-amber-700">
+            Diperiksa otomatis tiap 2 menit. Kosong = semua pelanggan dengan ONU menyala
+            punya sesi PPPoE.
+          </p>
+        </div>
+        <button
+          className="btn-ghost text-sm text-amber-900"
+          disabled={refresh.isPending}
+          onClick={() => refresh.mutate()}
+        >
+          {refresh.isPending ? <Loader2 className="animate-spin" size={15} /> : <RefreshCw size={15} />}
+          Perbarui sekarang
+        </button>
+      </div>
+
+      {!data?.length ? (
+        <p className="mt-3 text-sm text-emerald-700">
+          Tidak ada yang perlu diperiksa saat ini.
+        </p>
+      ) : (
+        <ul className="mt-4 space-y-3">
+          {data.map((i) => (
+            <li key={i.subscriptionId} className="rounded-xl bg-white p-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{i.customerName ?? '(tanpa nama)'}</span>
+                {i.customerNo && <span className="text-xs text-slate-400">{i.customerNo}</span>}
+                {i.pppoeUser && (
+                  <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs">{i.pppoeUser}</span>
+                )}
+                {i.routerName && <span className="text-xs text-slate-500">router: {i.routerName}</span>}
+                {i.onuSerial && <span className="text-xs text-slate-500">ONU: {i.onuSerial}</span>}
+              </div>
+              <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-xs text-slate-600">
+                {i.reasons.map((r) => <li key={r}>{r}</li>)}
+              </ul>
+              <p className="mt-1.5 text-xs text-slate-400">
+                Terakhir online: {waktu(i.lastOnlineAt)} · diperiksa {waktu(i.checkedAt)}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

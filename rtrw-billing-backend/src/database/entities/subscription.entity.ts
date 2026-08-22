@@ -46,6 +46,36 @@ export class Subscription {
   @Column({ name: 'due_date', type: 'date' })
   dueDate: string;
 
+  // ── Status PPPoE hasil polling berkala (bukan konfigurasi) ────────────────
+
+  /** Sesi PPPoE ditemukan pada polling terakhir. */
+  @Column({ name: 'live_online', default: false })
+  liveOnline: boolean;
+
+  @Column({ name: 'live_ip', type: 'varchar', length: 64, nullable: true })
+  liveIp: string | null;
+
+  @Column({ name: 'live_uptime', type: 'varchar', length: 32, nullable: true })
+  liveUptime: string | null;
+
+  /** MAC perangkat pelanggan yang membangun sesi (caller-id RouterOS). */
+  @Column({ name: 'live_caller_id', type: 'varchar', length: 64, nullable: true })
+  liveCallerId: string | null;
+
+  /**
+   * Router tempat sesi benar-benar ditemukan. Bila berbeda dengan `router_id`,
+   * berarti pemetaan router pelanggan perlu dikoreksi (multi-MikroTik).
+   */
+  @ManyToOne(() => Router, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'live_router_id' })
+  liveRouter: Router | null;
+
+  @Column({ name: 'last_online_at', type: 'timestamptz', nullable: true })
+  lastOnlineAt: Date | null;
+
+  @Column({ name: 'live_checked_at', type: 'timestamptz', nullable: true })
+  liveCheckedAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

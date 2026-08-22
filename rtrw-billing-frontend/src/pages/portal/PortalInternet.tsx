@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { RefreshCw, WifiOff } from 'lucide-react';
 import { portalApi } from '@/lib/portalApi';
 import { errorMessage } from '@/lib/publicApi';
-import { rupiah, tanggal, uptimeLabel } from '@/lib/format';
+import { rupiah, tanggal, uptimeLabel, waktu } from '@/lib/format';
 import { EmptyState, ErrorState, Loading, PCard, PageTitle, StatusBadge } from '@/components/portal/ui';
 
 interface InternetData {
@@ -16,7 +16,11 @@ interface InternetData {
       name: string; price: number; speedDownMbps: number | null; speedUpMbps: number | null; rateLimit: string;
     } | null;
   } | null;
-  live: { online: boolean; ip: string | null; uptime: string | null } | null;
+  live: {
+    online: boolean; ip: string | null; uptime: string | null;
+    /** true = dari hasil polling terakhir, bukan pembacaan langsung saat ini. */
+    cached?: boolean; checkedAt?: string | null;
+  } | null;
   liveError: string | null;
 }
 
@@ -76,19 +80,26 @@ export default function PortalInternet() {
             </button>
           </div>
 
-          {data.liveError ? (
+          {/* Tanpa data sama sekali jangan disebut "offline" — itu klaim yang
+              belum tentu benar; tampilkan bahwa statusnya belum terbaca. */}
+          {!data.live ? (
             <div className="mt-3 flex items-start gap-2 rounded-xl bg-slate-100 p-3 text-sm text-slate-600 dark:bg-white/5 dark:text-slate-300">
               <WifiOff size={16} className="mt-0.5 shrink-0" />
-              <span>{data.liveError}</span>
+              <span>{data.liveError ?? 'Status koneksi belum dapat dibaca.'}</span>
             </div>
           ) : (
             <div className="mt-3">
-              <StatusBadge status={data.live?.online ? 'online' : 'offline'} />
+              <StatusBadge status={data.live.online ? 'online' : 'offline'} />
               <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                {data.live?.online
+                {data.live.online
                   ? `Tersambung ${uptimeLabel(data.live.uptime)}`
                   : 'Perangkat Anda sedang tidak tersambung ke jaringan.'}
               </p>
+              {data.live.cached && (
+                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                  Data pemeriksaan terakhir {waktu(data.live.checkedAt)}.
+                </p>
+              )}
             </div>
           )}
 

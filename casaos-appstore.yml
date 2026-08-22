@@ -21,6 +21,8 @@ services:
       # 64 hex (32 byte). GANTI dengan hasil: openssl rand -hex 32
       DATA_ENC_KEY: 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff
       SEED_ON_START: "true"
+      # Selang polling sesi PPPoE (cron). Perbesar bila router terasa terbebani.
+      PPPOE_POLL_CRON: "*/2 * * * *"
       # Integrasi GenieACS (opsional) — isi URL NBI server GenieACS, mis. http://192.168.88.5:7557
       # Payment Gateway (opsional) — pilih salah satu atau keduanya
       # Tripay: daftar di https://tripay.co.id, ambil API Key & Private Key di Member > Merchant > API

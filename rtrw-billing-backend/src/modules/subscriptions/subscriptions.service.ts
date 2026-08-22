@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
-import { Subscription, ServicePackage, Router, Customer } from '@database/entities';
+import { Subscription, ServicePackage, Router, Customer, Device } from '@database/entities';
 import { CryptoService } from '@common/crypto/crypto.service';
 import { MikrotikService } from '@modules/mikrotik/mikrotik.service';
 import {
@@ -17,6 +17,7 @@ export class SubscriptionsService {
     @InjectRepository(ServicePackage) private readonly packages: Repository<ServicePackage>,
     @InjectRepository(Router) private readonly routers: Repository<Router>,
     @InjectRepository(Customer) private readonly customers: Repository<Customer>,
+    @InjectRepository(Device) private readonly devices: Repository<Device>,
     @InjectQueue(MIKROTIK_QUEUE) private readonly queue: Queue<MikrotikJobData>,
     private readonly crypto: CryptoService,
     private readonly mikrotik: MikrotikService,
@@ -66,7 +67,8 @@ export class SubscriptionsService {
     const routers = await this.routers.find();
     const subs = await this.subs.find({ relations: { customer: true, package: true } });
     const byUser = new Map<string, Subscription>();
-    for (const s of subs) if (s.pppoeUser) byUser.set(s.pppoeUser, s);
+    // Nama secret di Mikrotik sering beda kapitalisasi dengan yang tersimpan.
+    for (const s of subs) if (s.pppoeUser) byUser.set(s.pppoeUser.trim().toLowerCase(), s);
 
     const today = Date.now();
     const out: any[] = [];
@@ -75,7 +77,7 @@ export class SubscriptionsService {
       let active: any[] = [];
       try { active = await this.mikrotik.listActive(r); } catch { continue; }
       for (const a of active) {
-        const sub = byUser.get(a.name);
+        const sub = byUser.get(String(a.name ?? '').trim().toLowerCase());
         let remainingDays: number | null = null;
         if (sub?.dueDate) {
           const due = new Date(sub.dueDate + 'T00:00:00Z').getTime();
@@ -94,6 +96,68 @@ export class SubscriptionsService {
           status: sub?.status ?? null,
         });
       }
+    }
+    return out;
+  }
+
+  /**
+   * Langganan yang perlu diperiksa: hasil polling PPPoE terakhir menunjukkan
+   * TIDAK ada sesi, padahal ONU-nya online. Dilengkapi dugaan penyebabnya agar
+   * teknisi tahu harus mengecek apa lebih dulu.
+   */
+  async pppoeIssues() {
+    const subs = await this.subs.find({
+      relations: { customer: true, package: true, router: true, liveRouter: true },
+    });
+    const devices = await this.devices.find({ relations: { subscription: true } });
+    const deviceBySub = new Map<string, (typeof devices)[number]>();
+    for (const d of devices) if (d.subscription) deviceBySub.set(String(d.subscription.id), d);
+
+    const out: any[] = [];
+    for (const s of subs) {
+      const device = deviceBySub.get(String(s.id));
+      const onuOnline = device?.lastStatus === 'online';
+      if (s.liveOnline || !onuOnline) continue;
+      // Pelanggan yang memang ditangguhkan tidak dianggap masalah.
+      if (s.status !== 'active') continue;
+
+      const reasons: string[] = [];
+      if (!s.pppoeUser) {
+        reasons.push('Langganan ini belum punya user PPPoE — mungkin memakai DHCP/bridge, bukan PPPoE.');
+      }
+      if (!s.router) {
+        reasons.push('Langganan belum dipetakan ke router mana pun, jadi sesinya tidak pernah dicari.');
+      }
+      if (s.router?.status === 'offline') {
+        reasons.push(`Router ${s.router.name} tidak terjawab saat polling terakhir.`);
+      }
+      if (s.liveRouter && s.router && String(s.liveRouter.id) !== String(s.router.id)) {
+        reasons.push(
+          `Sesi terakhir justru ditemukan di router ${s.liveRouter.name}, bukan ${s.router.name} — perbaiki pemetaan routernya.`,
+        );
+      }
+      if (!reasons.length) {
+        reasons.push(
+          s.lastOnlineAt
+            ? 'ONU menyala tapi sesi PPPoE tidak terbentuk — cek user/password PPPoE di router pelanggan, atau perangkatnya sedang mode bridge/DHCP.'
+            : 'Sesi PPPoE belum pernah terpantau sejak polling aktif — kemungkinan pelanggan tidak memakai PPPoE.',
+        );
+      }
+
+      out.push({
+        subscriptionId: String(s.id),
+        customerName: s.customer?.fullName ?? null,
+        customerNo: s.customer?.customerNo ?? null,
+        pppoeUser: s.pppoeUser,
+        packageName: s.package?.name ?? null,
+        routerName: s.router?.name ?? null,
+        liveRouterName: s.liveRouter?.name ?? null,
+        onuStatus: device?.lastStatus ?? null,
+        onuSerial: device?.serialNumber ?? null,
+        lastOnlineAt: s.lastOnlineAt,
+        checkedAt: s.liveCheckedAt,
+        reasons,
+      });
     }
     return out;
   }

@@ -21,6 +21,8 @@ services:
       JWT_REFRESH_EXPIRES: 7d
       DATA_ENC_KEY: 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff  # <-- GANTI (harus tepat 64 karakter hex)
       SEED_ON_START: "true"
+      # Selang polling sesi PPPoE (cron). Perbesar bila router terasa terbebani.
+      PPPOE_POLL_CRON: "*/2 * * * *"
       GENIEACS_URL: ""
       GENIEACS_USERNAME: ""
       GENIEACS_PASSWORD: ""
