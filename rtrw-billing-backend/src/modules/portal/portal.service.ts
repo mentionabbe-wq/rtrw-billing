@@ -101,7 +101,13 @@ export class PortalService {
     // Payload QRIS diperiksa di sini agar salah salin ketahuan saat menyimpan,
     // bukan saat pelanggan gagal memindai.
     if (dto.qrisPayload !== undefined) {
-      const raw = (dto.qrisPayload ?? '').replace(/\s+/g, '');
+      // JANGAN buang spasi di tengah: nama merchant & kota (tag 59/60) sering
+      // memuat spasi, dan menghapusnya merusak panjang elemen TLV. Yang dibuang
+      // hanya pembungkus baris hasil salin-tempel & karakter tak terlihat.
+      const raw = (dto.qrisPayload ?? '')
+        .replace(/[\r\n\t]/g, '')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .trim();
       if (!raw) {
         dto.qrisPayload = null;
       } else {

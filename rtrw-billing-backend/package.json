@@ -16,7 +16,8 @@
     "migration:run:prod": "typeorm migration:run -d dist/database/data-source.js",
     "seed": "ts-node src/database/seed.ts",
     "seed:prod": "node dist/database/seed.js",
-    "build:client": "npm --prefix ../rtrw-billing-frontend run build"
+    "build:client": "npm --prefix ../rtrw-billing-frontend run build",
+    "test:qris": "ts-node src/common/qris/qris.util.spec.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^10.2.0",

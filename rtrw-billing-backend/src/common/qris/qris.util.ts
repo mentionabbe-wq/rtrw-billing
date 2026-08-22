@@ -42,12 +42,18 @@ export function parseTlv(payload: string): QrisTlv[] {
     const tag = payload.slice(i, i + 2);
     const lenRaw = payload.slice(i + 2, i + 4);
     if (tag.length < 2 || lenRaw.length < 2 || !/^\d{2}$/.test(lenRaw)) {
-      throw new Error('Struktur QRIS tidak valid (panjang elemen tidak terbaca).');
+      throw new Error(
+        `Struktur QRIS tidak valid: panjang elemen tidak terbaca pada posisi ${i + 2} ` +
+          `(seharusnya 2 digit angka, ditemukan "${lenRaw}").`,
+      );
     }
     const len = parseInt(lenRaw, 10);
     const value = payload.slice(i + 4, i + 4 + len);
     if (value.length !== len) {
-      throw new Error('Struktur QRIS tidak valid (isi elemen terpotong).');
+      throw new Error(
+        `Struktur QRIS tidak valid: isi elemen tag ${tag} terpotong ` +
+          `(butuh ${len} karakter, tersisa ${value.length}).`,
+      );
     }
     out.push({ tag, value });
     i += 4 + len;
@@ -82,8 +88,32 @@ export interface QrisInfo {
 export function inspectQris(payload: string): QrisInfo {
   const raw = (payload ?? '').trim();
   if (!raw) return { valid: false, error: 'Payload QRIS kosong.' };
-  if (!/^\d{2}/.test(raw)) {
-    return { valid: false, error: 'Bukan payload QRIS. Payload diawali angka, mis. 00020101...' };
+
+  if (/^https?:\/\//i.test(raw)) {
+    return {
+      valid: false,
+      error:
+        'Isi QR ini berupa tautan, bukan payload QRIS. QR yang dipakai harus QRIS merchant ' +
+        '(teks panjang diawali 00020101), bukan QR personal e-wallet.',
+    };
+  }
+  if (!raw.startsWith('0002')) {
+    return {
+      valid: false,
+      error: `Bukan payload QRIS: seharusnya diawali "0002", ditemukan "${raw.slice(0, 8)}".`,
+    };
+  }
+  // Panjang elemen TLV dihitung per karakter ASCII. Karakter non-ASCII berarti
+  // hasil salin tidak utuh (atau tercampur teks lain) — hentikan lebih awal
+  // dengan pesan yang jelas daripada gagal di tengah parsing.
+  const bad = [...raw].find((ch) => ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) > 0x7e);
+  if (bad) {
+    return {
+      valid: false,
+      error:
+        `Payload memuat karakter yang tidak semestinya (kode ${bad.charCodeAt(0)}). ` +
+        'Salin ulang seluruh teks hasil pemindaian QR, tanpa tambahan apa pun.',
+    };
   }
 
   let items: QrisTlv[];
