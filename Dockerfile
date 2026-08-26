@@ -37,6 +37,8 @@ COPY rtrw-billing-backend/package*.json ./
 RUN npm install --omit=dev
 COPY --from=be /app/dist ./dist
 COPY --from=fe /fe/dist ./client
+# Skrip diagnostik (mis. snmp-probe.js) agar bisa dijalankan lewat `docker exec`.
+COPY rtrw-billing-backend/scripts ./scripts
 COPY rtrw-billing-backend/docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 EXPOSE 3000

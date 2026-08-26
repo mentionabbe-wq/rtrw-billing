@@ -17,7 +17,12 @@ export interface VendorProfile {
   label: string;
   rxPowerOid: string;
   txPowerOid: string;
-  adminStatusOid: string;
+  /**
+   * OID admin-status ONU utk SNMP SET (enable/disable port).
+   * `null` = belum diverifikasi utk vendor ini → fitur SET ditolak dgn pesan
+   * jelas, daripada menulis ke OID salah (bisa merusak data ONU di OLT).
+   */
+  adminStatusOid: string | null;
   adminUp: number;
   adminDown: number;
   /** raw integer SNMP -> dBm. Return null bila LOS / tak ada sinyal. */
@@ -88,7 +93,11 @@ export const VENDOR_PROFILES: Record<OltVendor, VendorProfile> = {
     label: 'C-Data GPON FD1601S/FD11xx/FD12xx',
     rxPowerOid: '1.3.6.1.4.1.17409.2.8.4.4.1.4',
     txPowerOid: '1.3.6.1.4.1.17409.2.8.4.4.1.5',
-    adminStatusOid: '1.3.6.1.4.1.17409.2.8.4.1.1.3',
+    // ⚠ SEBELUMNYA berisi 17409.2.8.4.1.1.3 — PERSIS SAMA dengan descOid di
+    // bawah (kolom deskripsi ONU, tipe string). SNMP SET ke situ bukan mematikan
+    // ONU, melainkan menimpa deskripsi yang dipakai pencocokan pelanggan.
+    // Dinolkan sampai OID admin-status yang benar diverifikasi dgn snmp-probe.
+    adminStatusOid: null,
     adminUp: 1,
     adminDown: 2,
     // Unit 0.01 dBm. Hanya sentinel & nilai mustahil (< -35 dBm) yang dianggap

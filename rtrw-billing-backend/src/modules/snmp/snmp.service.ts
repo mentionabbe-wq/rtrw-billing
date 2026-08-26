@@ -146,6 +146,15 @@ export class SnmpService {
   /** SET ONU/ONT admin status: up=enable, down=shutdown (nilai per vendor). */
   async setOnuAdminStatus(olt: OltTarget, ifIndex: number, onuId: number, up: boolean): Promise<void> {
     const profile = getProfile(olt.vendor);
+    if (!profile.adminStatusOid) {
+      // Lebih baik gagal jelas daripada SNMP SET ke OID yang belum terverifikasi
+      // (pernah menimpa kolom deskripsi ONU pada profil C-Data GPON).
+      throw new Error(
+        `Enable/disable ONU lewat OLT belum didukung untuk profil "${profile.label}" — ` +
+        'OID admin-status belum diverifikasi. Isolir pelanggan lewat Mikrotik (profil isolir) saja. ' +
+        'Untuk memverifikasi OID: jalankan scripts/snmp-probe.js ke OLT Anda.',
+      );
+    }
     const session = this.session(olt);
     const idx = profile.buildIndex ? profile.buildIndex(ifIndex, onuId) : `${ifIndex}.${onuId}`;
     const oid = `${profile.adminStatusOid}.${idx}`;
