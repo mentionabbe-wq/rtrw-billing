@@ -7,11 +7,15 @@
  * mengembalikan data dari OLT Anda, dan menemukan kolom mana yang berisi
  * status/redaman ONU — bukan menebak dari MIB.
  *
- * Contoh pakai (di server, di dalam container backend):
- *   docker exec -it rtrw-billing node scripts/snmp-probe.js 192.168.30.5 public
- *   docker exec -it rtrw-billing node scripts/snmp-probe.js 192.168.30.5 public --rows=5
- *   docker exec -it rtrw-billing node scripts/snmp-probe.js 10.0.0.2 --v3 --user=admin --auth=AUTHKEY --priv=PRIVKEY
- *   docker exec -it rtrw-billing node scripts/snmp-probe.js 192.168.30.5 public --oid=1.3.6.1.4.1.17409.2.8.4.1.1
+ * Contoh pakai (di server, di dalam container backend `rtrw-billing-app`):
+ *   # PALING MUDAH — IP & kredensial dibaca otomatis dari OLT yg terdaftar di app:
+ *   docker exec -it rtrw-billing-app node scripts/snmp-probe.js
+ *
+ *   # atau tentukan sendiri:
+ *   docker exec -it rtrw-billing-app node scripts/snmp-probe.js 192.168.30.5 public
+ *   docker exec -it rtrw-billing-app node scripts/snmp-probe.js 192.168.30.5 public --rows=5
+ *   docker exec -it rtrw-billing-app node scripts/snmp-probe.js 10.0.0.2 --v3 --user=admin --auth=AUTHKEY --priv=PRIVKEY
+ *   docker exec -it rtrw-billing-app node scripts/snmp-probe.js 192.168.30.5 public --oid=1.3.6.1.4.1.17409.2.8.4.1.1
  *
  * Tanpa --oid, script memindai subtree tabel ONU C-Data GPON:
  *   17409.2.8.4.1.1  = tabel ONU (nama, deskripsi, status, dll)
@@ -33,13 +37,69 @@ const oidFlags = argv
   .filter((a) => a.startsWith('--oid='))
   .map((a) => a.slice('--oid='.length));
 const positional = argv.filter((a) => !a.startsWith('--'));
-const host = positional[0];
-const community = positional[1] ?? 'public';
 const maxRows = Number(flags.rows ?? 8);
 
-if (!host) {
-  console.error('Pemakaian: node scripts/snmp-probe.js <ip-olt> [community] [--rows=N] [--oid=OID]');
-  console.error('       v3: node scripts/snmp-probe.js <ip-olt> --v3 --user=U --auth=AUTHKEY --priv=PRIVKEY');
+// Diisi dari argumen, atau otomatis dari DB bila argumen kosong.
+let host = positional[0];
+let community = positional[1] ?? 'public';
+let useV3 = Boolean(flags.v3);
+let v3 = { user: flags.user, auth: flags.auth, priv: flags.priv };
+
+/**
+ * Ambil OLT terdaftar dari database aplikasi (tabel olts) supaya pengguna tak
+ * perlu mengetik IP/kredensial manual. Kunci AES sama dgn yang dipakai app
+ * (DATA_ENC_KEY), jadi auth/priv SNMPv3 bisa dibuka di sini.
+ */
+async function loadOltFromDb() {
+  const { Client } = require('pg');
+  const client = new Client({
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT, 10) || 5432,
+    user: process.env.DB_USER || 'rtrw',
+    password: process.env.DB_PASS || 'changeme',
+    database: process.env.DB_NAME || 'rtrw_billing',
+  });
+  await client.connect();
+  const { rows } = await client.query(
+    'select name, host::text as host, vendor, snmp_version, snmp_user, snmp_auth_enc, snmp_priv_enc from olts order by id',
+  );
+  await client.end();
+  if (!rows.length) throw new Error('Tabel olts kosong — daftarkan OLT dulu di menu OLT.');
+
+  const picked = flags.olt
+    ? rows.find((r) => r.name === flags.olt || r.host === flags.olt)
+    : rows[0];
+  if (!picked) throw new Error(`OLT "${flags.olt}" tidak ditemukan. Ada: ${rows.map((r) => r.name).join(', ')}`);
+  if (rows.length > 1 && !flags.olt) {
+    console.log(`(${rows.length} OLT terdaftar; memakai "${picked.name}". Pilih lain dgn --olt=NAMA)\n`);
+  }
+
+  const decrypt = (buf) => {
+    if (!buf) return '';
+    const crypto = require('crypto');
+    const hex = process.env.DATA_ENC_KEY;
+    if (!hex || hex.length !== 64) throw new Error('DATA_ENC_KEY tidak tersedia/tidak valid di environment.');
+    const key = Buffer.from(hex, 'hex');
+    const d = crypto.createDecipheriv('aes-256-gcm', key, buf.subarray(0, 12));
+    d.setAuthTag(buf.subarray(12, 28));
+    return Buffer.concat([d.update(buf.subarray(28)), d.final()]).toString('utf8');
+  };
+
+  host = picked.host;
+  if ((picked.snmp_version || 'v3').toLowerCase() === 'v2c') {
+    useV3 = false;
+    community = picked.snmp_user;           // v2c: community disimpan di snmp_user
+  } else {
+    useV3 = true;
+    v3 = { user: picked.snmp_user, auth: decrypt(picked.snmp_auth_enc), priv: decrypt(picked.snmp_priv_enc) };
+  }
+  console.log(`OLT dari database: "${picked.name}" — ${host} (vendor ${picked.vendor}, ${picked.snmp_version})\n`);
+}
+
+if (host === 'IP_OLT' || community === 'COMMUNITY') {
+  console.error('IP_OLT/COMMUNITY itu hanya contoh — ganti dgn nilai asli, atau jalankan');
+  console.error('tanpa argumen sama sekali agar dibaca otomatis dari database:');
+  console.error('  docker exec -it rtrw-billing-app node scripts/snmp-probe.js');
   process.exit(1);
 }
 
@@ -57,14 +117,14 @@ const APP_OIDS = {
 
 function makeSession() {
   const opts = { timeout: 8000, retries: 2 };
-  if (flags.v3) {
+  if (useV3) {
     return snmp.createV3Session(host, {
-      name: flags.user,
+      name: v3.user,
       level: snmp.SecurityLevel.authPriv,
       authProtocol: snmp.AuthProtocols.sha,
-      authKey: flags.auth,
+      authKey: v3.auth,
       privProtocol: snmp.PrivProtocols.aes,
-      privKey: flags.priv,
+      privKey: v3.priv,
       ...opts,
     });
   }
@@ -131,7 +191,18 @@ function groupByColumn(rows, base) {
 }
 
 (async () => {
-  console.log(`\n=== SNMP probe ke ${host} (${flags.v3 ? 'v3 authPriv' : `v2c community="${community}"`}) ===\n`);
+  if (!host) {
+    try {
+      await loadOltFromDb();
+    } catch (e) {
+      console.error(`Gagal membaca OLT dari database: ${e.message || e.code || String(e)}\n`);
+      console.error('Pemakaian: node scripts/snmp-probe.js [ip-olt] [community] [--rows=N] [--oid=OID] [--olt=NAMA]');
+      console.error('       v3: node scripts/snmp-probe.js <ip-olt> --v3 --user=U --auth=AUTHKEY --priv=PRIVKEY');
+      process.exit(1);
+    }
+  }
+
+  console.log(`\n=== SNMP probe ke ${host} (${useV3 ? 'v3 authPriv' : `v2c community="${community}"`}) ===\n`);
 
   const sys = await get('1.3.6.1.2.1.1.1.0');
   if (sys.error) {
