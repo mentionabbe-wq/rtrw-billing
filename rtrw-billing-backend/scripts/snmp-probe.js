@@ -96,9 +96,16 @@ async function loadOltFromDb() {
   console.log(`OLT dari database: "${picked.name}" — ${host} (vendor ${picked.vendor}, ${picked.snmp_version})\n`);
 }
 
-if (host === 'IP_OLT' || community === 'COMMUNITY') {
-  console.error('IP_OLT/COMMUNITY itu hanya contoh — ganti dgn nilai asli, atau jalankan');
-  console.error('tanpa argumen sama sekali agar dibaca otomatis dari database:');
+// Placeholder dari contoh dokumentasi sering ikut ter-paste — tolak lebih awal
+// dgn petunjuk, daripada gagal sbg "Unknown User Name"/DNS error yg mbingungkan.
+const PLACEHOLDERS = ['IP_OLT', 'COMMUNITY', 'USER', 'AUTHKEY', 'PRIVKEY', 'U', 'NAMA'];
+const pasted = [host, community, v3.user, v3.auth, v3.priv].filter(
+  (x) => typeof x === 'string' && PLACEHOLDERS.includes(x),
+);
+if (pasted.length) {
+  console.error(`Nilai contoh ikut ter-paste: ${pasted.join(', ')} — itu bukan nilai asli.\n`);
+  console.error('Cara termudah, jalankan TANPA argumen sama sekali (IP & kredensial');
+  console.error('dibaca otomatis dari OLT yang sudah terdaftar di aplikasi):');
   console.error('  docker exec -it rtrw-billing-app node scripts/snmp-probe.js');
   process.exit(1);
 }
