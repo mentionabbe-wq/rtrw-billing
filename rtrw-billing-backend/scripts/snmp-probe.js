@@ -39,8 +39,11 @@ const oidFlags = argv
 const positional = argv.filter((a) => !a.startsWith('--'));
 const maxRows = Number(flags.rows ?? 8);
 
+/** Buang netmask bila alamat ditulis sbg CIDR ("192.168.30.20/32"). */
+const stripMask = (h) => (h == null ? h : String(h).split('/')[0].trim());
+
 // Diisi dari argumen, atau otomatis dari DB bila argumen kosong.
-let host = positional[0];
+let host = stripMask(positional[0]);
 let community = positional[1] ?? 'public';
 let useV3 = Boolean(flags.v3);
 let v3 = { user: flags.user, auth: flags.auth, priv: flags.priv };
@@ -60,8 +63,10 @@ async function loadOltFromDb() {
     database: process.env.DB_NAME || 'rtrw_billing',
   });
   await client.connect();
+  // host() melepas netmask dari tipe inet — `host::text` menghasilkan
+  // "192.168.30.20/32" yang tak bisa di-resolve jadi alamat SNMP.
   const { rows } = await client.query(
-    'select name, host::text as host, vendor, snmp_version, snmp_user, snmp_auth_enc, snmp_priv_enc from olts order by id',
+    'select name, host(host) as host, vendor, snmp_version, snmp_user, snmp_auth_enc, snmp_priv_enc from olts order by id',
   );
   await client.end();
   if (!rows.length) throw new Error('Tabel olts kosong — daftarkan OLT dulu di menu OLT.');
@@ -85,7 +90,7 @@ async function loadOltFromDb() {
     return Buffer.concat([d.update(buf.subarray(28)), d.final()]).toString('utf8');
   };
 
-  host = picked.host;
+  host = stripMask(picked.host);
   if ((picked.snmp_version || 'v3').toLowerCase() === 'v2c') {
     useV3 = false;
     community = picked.snmp_user;           // v2c: community disimpan di snmp_user

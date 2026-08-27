@@ -36,16 +36,26 @@ export class SnmpService {
     private readonly config: ConfigService,
   ) {}
 
+  /**
+   * Alamat OLT yang aman dipakai net-snmp. Kolom `olts.host` bertipe `inet`,
+   * sehingga nilainya bisa terbawa netmask ("192.168.30.20/32") — bentuk itu
+   * gagal di-resolve (getaddrinfo ENOTFOUND) dan membuat SELURUH polling SNMP
+   * diam-diam gagal. Ambil bagian alamatnya saja.
+   */
+  private addr(olt: OltTarget): string {
+    return String(olt.host).split('/')[0].trim();
+  }
+
   private session(olt: OltTarget): any {
     // Timeout & retry lebih longgar: OLT GPON (C-Data) sering lambat menjawab
     // walk DDM saat sibuk. Tanpa ini, timeout sesaat -> status LOS palsu.
     const opts = { timeout: 8000, retries: 3 };
     // v2c: community = snmpUser. Dipakai banyak OLT EPON murah (mis. C-Data).
     if ((olt.version ?? 'v3').toLowerCase() === 'v2c') {
-      return snmp.createSession(olt.host, olt.snmpUser, { version: snmp.Version2c, ...opts });
+      return snmp.createSession(this.addr(olt), olt.snmpUser, { version: snmp.Version2c, ...opts });
     }
     // v3 authPriv (default).
-    return snmp.createV3Session(olt.host, {
+    return snmp.createV3Session(this.addr(olt), {
       name: olt.snmpUser,
       level: snmp.SecurityLevel.authPriv,
       authProtocol: snmp.AuthProtocols.sha,
